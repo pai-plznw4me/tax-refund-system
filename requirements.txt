@@ -1,0 +1,7 @@
+certifi @ file:///private/var/folders/sy/f16zz6x50xz3113nwtb9bvq00000gp/T/abs_477u68wvzm/croot/certifi_1671487773341/work/certifi
+numpy==1.24.1
+pandas==1.5.2
+python-dateutil==2.8.2
+pytz==2022.7
+six==1.16.0
+xlrd==2.0.1
