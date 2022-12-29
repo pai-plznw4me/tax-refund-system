@@ -1,3 +1,6 @@
+import calendar
+from datetime import datetime
+
 import pandas as pd
 import numpy as np
 
@@ -49,6 +52,19 @@ for sheet in sheets:
     target_df['diff_month'] = target_df['diff_month'].map(np.ceil).map(int)
 
     # 각 연도별 근무 날짜를 추출한다.
+    # 말일 기준이면 + 을 한다. 1월은 31일까지 존재한다고 했을때 1월 29일날 근무를 시작해도 +1 을 해야 한다.
+    # 각 년도의 마지막날을 가져온다.
+    dates = []
+    for yy in range(int(start_date.year), int(end_date.year) + 1):
+        for mm in range(1, 12 + 1):
+            dd = calendar.monthrange(yy, mm)[1]
+            date = '{}-{}-{}'.format(yy,mm,dd)
+            dates.append(pd.to_datetime(date))
+
+    calendar_df = pd.DataFrame()
+    for date in dates:
+        mask = (target_df['가상자격취득일'] <= date) & (target_df['가상자격상실일'] >= date)
+        calendar_df[date] = mask
 
 
     # 생년 월일을 계산한다.
