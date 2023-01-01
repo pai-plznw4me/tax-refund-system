@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Title</title>
+    <link rel="stylesheet" type="text/css" href="http://cdn.datatables.net/1.13.1/css/jquery.dataTables.min.css">
+
+</head>
+<body>
+
+{# 단일 파일 업로드 #}
+<form method="post" enctype="multipart/form-data">
+    <input type="file" name="file" />
+<input type="submit">
+</form>
+
+<!-- html table parsing from django -->
+{% autoescape off %}{{ htmls }}{% endautoescape %}
+<script
+        src="https://code.jquery.com/jquery-3.6.3.js"
+        integrity="sha256-nQLuAZGRRcILA+6dMBOvcRh5Pe310sBpanc6+QBmyVM="
+        crossorigin="anonymous"></script>
+<script src="//cdn.datatables.net/1.13.1/js/jquery.dataTables.min.js"></script>
+<script>var t = $('#workdate').DataTable();</script>
+</body>
+</html>
