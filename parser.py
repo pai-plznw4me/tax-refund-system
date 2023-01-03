@@ -335,6 +335,24 @@ def first_deduction(young_counts, etc_counts):
     return first_deduction_infos
 
 
+def add_deduction(young_counts, etc_counts, index):
+    """
+    Description:
+        추가 공제 자격여부를 확인 한 후 여부를 확인합니다.
+    :return:
+    """
+    n = len(young_counts)
+    yng_diff = get_diff(young_counts)
+    etc_diff = get_diff(etc_counts)
+    wkr_diff = yng_diff + etc_diff
+
+    sliced_wrk = wkr_diff[index:]
+    sliced_yng = yng_diff[index:]
+    sliced_etc = etc_diff[index:]
+
+    return False
+
+
 def intersection(start_date_1, end_date_1, start_date_2, end_date_2, dummy_date):
     """
     Description:
@@ -394,5 +412,4 @@ if __name__ == '__main__':
 
     # 공제 금액 계산
     first_deduction_infos = first_deduction(calendar_sum[1:1 + 5].values, calendar_sum[1 + 5:1 + 5 + 5].values)
-
-
+    pass
