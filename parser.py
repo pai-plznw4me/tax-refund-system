@@ -157,13 +157,13 @@ def disable_calender(start_date, end_date, disable_workdate_df, curr_date, *disa
     Args:
         :param str start_date: 'yyyy-mm-dd'
         :param str end_date: 'yyyy-mm-dd'
-        :param DataFrame skeleton_df:
+        :param DataFrame disable_workdate_df:
         :argument: 사용자 index 정보 및 장애인 자격 취득 시기, 장애인 자격 상실 시기 정보를 tuple 로 제공
             [(index, acquisi_date, disqual_date),  (index, acquisi_date, disqual_date) ... (index, acquisi_date, disqual_date)]
             example)
                 [(0, '1989-04-20', '1989-05-20'), (0, '1989-01-01', None), (1, '1991-01-01', None), (2, '2018-07-20', None)]
 
-        장애인 기간 복무 기간을 반환합니다.
+        지정된 기간내 장애인 기간 복무 기간을 체크해 반환합니다.
     :DataFrame return:
 
     """
@@ -184,6 +184,8 @@ def generate_work_calendar(path, start_date, end_date, curr_date):
     """
     Description:
         상시 근로자와 청년 근로자 년도별 총 근무 달수를 계산해 반환합니다.
+        210살 이상 생존한 사람이 있다면 해당 기능에 문제가 생길수 있습니다.
+
 
     Args:
         :param str path: ex) './data/사업장가입자명부_20221222 (상실자포함).xls'
@@ -195,11 +197,12 @@ def generate_work_calendar(path, start_date, end_date, curr_date):
     """
     start_year = pd.to_datetime(start_date).year
     end_year = pd.to_datetime(end_date).year
-    years = list(range(start_year, end_year))
+    years = list(range(start_year, end_year + 1))
 
     # index 는 각 개인 고유 번호(pk)이어야 한다.
     df = load_workdate(path)
     name = df.iloc[:, 1]
+    dummy_date = pd.to_datetime('1800-01-01')
 
     # 상시 근무 날짜를 측정합니다.
     acquisi_date = pd.to_datetime(df.iloc[:, -2])
@@ -214,51 +217,51 @@ def generate_work_calendar(path, start_date, end_date, curr_date):
     # 청년 근무 날짜를 측정 합니다.(군복무 기간 추가)
     young_offset = 30
     birth_date = pd.to_datetime(resident2date(df.iloc[:, 0]))
+    young_acquisi_date = birth_date
     young_disqual_date = birth_date + pd.DateOffset(years=young_offset)
-    mask = disqual_date < young_disqual_date
-    young_disqual_date.loc[mask] = disqual_date.loc[mask]
-
     # 청년 복무 기간에서 군대를 다녀온 기간을 추가로 제공합니다.
     period = pd.to_timedelta(military_period(), unit='D')
     period.index = young_disqual_date.index
     young_disqual_date = young_disqual_date + period
-    young_workdate_df = check_workdate(start_date, end_date, acquisi_date, young_disqual_date)
-    young_workdate_sum_df = sum_by_yaer(young_workdate_df, [2018, 2019, 2020, 2021, 2022])
-    young_df = pd.concat([name, acquisi_date, young_disqual_date, young_workdate_sum_df], axis=1)
+    # 청년 인정 기간과 근무 기간 중 겹치는 기간을 계산합니다.
+    intrsctn_young_acquisi_date, intrsctn_young_disqual_date = \
+        intersection(acquisi_date, disqual_date, young_acquisi_date, young_disqual_date, dummy_date)
+    young_workdate_df = check_workdate(start_date, end_date, intrsctn_young_acquisi_date, intrsctn_young_disqual_date)
+    young_workdate_sum_df = sum_by_yaer(young_workdate_df, years)
 
     # 노인 근무 기간
     elder_offset = 60
     elder_acquisi_date = birth_date + pd.DateOffset(years=elder_offset)
-    elder_disqual_date = elder_acquisi_date + pd.DateOffset(years=1000)
-    elder_workdate_df = check_workdate(start_date, end_date, elder_acquisi_date, elder_disqual_date)
-    elder_workdate_sum_df = sum_by_yaer(elder_workdate_df, [2018, 2019, 2020, 2021, 2022])
-    elder_df = pd.concat([name, elder_acquisi_date, elder_disqual_date, elder_workdate_sum_df], axis=1)
+    elder_disqual_date = elder_acquisi_date + pd.DateOffset(years=150)
+    intrsctn_elder_acquisi_date, intrsctn_elder_acquisi_date = \
+        intersection(acquisi_date, disqual_date, elder_acquisi_date, elder_disqual_date, dummy_date)
+    elder_workdate_df = check_workdate(start_date, end_date, intrsctn_elder_acquisi_date, intrsctn_elder_acquisi_date)
+    elder_workdate_sum_df = sum_by_yaer(elder_workdate_df, years)
 
     # 장애인 기간
     disables = [(1, '1989-04-20', '1989-05-20'), (1, '1989-01-01', None), (2, '1991-01-01', None),
                 (3, '2018-07-20', None)]
-
+    # 지정된 기간 동안 장애인 자격을 부여 받은 달에 대한 calendar 을 가져옵니다.
     disable_workdate_df = skeleton_df.copy()
     disable_workdate_df = disable_calender("2017-01-01", "2022-12-31", disable_workdate_df, curr_date, *disables)
-    disable_workdate_sum_df = sum_by_yaer(disable_workdate_df, [2018, 2019, 2020, 2021, 2022])
-    disable_df = pd.concat([name, disable_workdate_sum_df], axis=1)
+    # 상시 근로한 달(month)중에 장애인 자격을 부여 받은 달(month)을 체크한 켈린더를 반환합니다.
+    disable_workdate_df = disable_workdate_df & workdate_df
+    disable_workdate_sum_df = sum_by_yaer(disable_workdate_df, years)
 
     # 통합 근무 기간
-    merged_workdate_df = young_workdate_df | disable_workdate_df | elder_workdate_df
-    merged_workdate_sum_df = sum_by_yaer(merged_workdate_df, [2018, 2019, 2020, 2021, 2022])
+    merged_young_workdate = young_workdate_df | elder_workdate_df | disable_workdate_df
+    merged_young_workdate_sum = sum_by_yaer(merged_young_workdate, years)
 
     # 임직원 및 계약직 직원 제거
     excutive_indices = [2, 3, 4]
     contract_indices = [5, 6, 7]
     indices = list(set(contract_indices + excutive_indices))
-    merged_workdate_sum_df.drop(index=indices, inplace=True)
+    merged_young_workdate_sum.drop(index=indices, inplace=True)
     workdate_sum_df.drop(index=indices, inplace=True)
     name.drop(index=indices, inplace=True)
 
     # 연도별 상시 및 청년 근무 통합
-    workdate_by_year = pd.concat([name, workdate_sum_df, merged_workdate_sum_df], axis=1)
-    workdate_by_year_sum = workdate_by_year.iloc[:, 1:].sum(axis=0)
-
+    workdate_by_year = pd.concat([name, workdate_sum_df, merged_young_workdate_sum], axis=1)
     return workdate_by_year
 
 
@@ -274,7 +277,7 @@ def get_diff(workers):
     return diff
 
 
-def firset_deduction(young_counts, etc_counts):
+def first_deduction(young_counts, etc_counts):
     """
     Description:
         최초 공제 정보를 계산해 반환합니다.
@@ -306,11 +309,60 @@ def firset_deduction(young_counts, etc_counts):
     return first_deduction_infos
 
 
+def intersection(start_date_1, end_date_1, start_date_2, end_date_2, dummy_date):
+    """
+    Description:
+        두 날짜 범위중 겹치는 범위를 제공 합니다.
+        만약 겹치지 않으면 None 을 반환합니다.
+
+    Usage:
+        start_date_1 = pd.to_datetime(pd.Series(['2017-01-01', '2017-01-01', '2017-01-01', '2017-01-01']))
+        end_date_1 = pd.to_datetime(pd.Series(['2019-01-01', '2019-01-01', '2019-01-01', '2019-01-01']))
+        start_date_2 = pd.to_datetime(pd.Series(['2019-01-01', '2018-01-01', '2018-01-01', '2016-01-01']))
+        end_date_2 = pd.to_datetime(pd.Series(['2020-01-01', '2020-01-01', '2018-12-31', '2018-01-01']))
+        start_date, end_date = intersection(start_date_1, end_date_1, start_date_2, end_date_2,)
+        results
+            start_date (0, NaT) (1, Timestamp('2018-01-01 00:00:00')) (2, Timestamp('2018-01-01 00:00:00')) (3, Timestamp('2017-01-01 00:00:00'))
+            end_date (0, NaT) (1, Timestamp('2019-01-01 00:00:00')) (2, Timestamp('2018-12-31 00:00:00')) (3, Timestamp('2018-01-01 00:00:00'))
+    Args:
+        :param pd.Series start_date_1:
+        :param pd.Series end_date_1:
+        :param pd.Series start_date_2:
+        :param pd.Series end_date_2:
+        :param datetime dummy_date: NaN 값을 대체할 날짜
+            start_date (0, NaT) ... => (0, dummy_date)
+            end_date (0, NaT) ...   => (0, dummy_date)
+        :return:
+    """
+    assert (start_date_1 < end_date_1).all() & (start_date_2 < end_date_2).all()
+    max_mask = start_date_1 >= start_date_2
+    start_date = start_date_2.copy()
+    start_date.loc[max_mask] = start_date_1.loc[max_mask]
+
+    min_mask = end_date_1 <= end_date_2
+    end_date = end_date_2.copy()
+    end_date.loc[min_mask] = end_date_1.loc[min_mask]
+
+    not_intersection_mask = start_date > end_date
+    start_date.loc[not_intersection_mask] = np.nan
+    end_date.loc[not_intersection_mask] = np.nan
+
+    if dummy_date:
+        start_date.fillna(dummy_date, inplace=True)
+        end_date.fillna(dummy_date, inplace=True)
+    return start_date, end_date
+
+
 if __name__ == '__main__':
     path = './data/사업장가입자명부_20221222 (상실자포함).xls'
-    start_date = '2017-01-01'
+
+    # 지정된 년도별, 각 사람별 상시 근무자 개월 수, 청년 근무자 개월 수 추출
+    start_date = '2018-01-01'
     end_date = '2022-12-31'
     curr_date = pd.Timestamp.today()
     calendar = generate_work_calendar(path, start_date, end_date, curr_date=curr_date)
-    dff = get_diff(np.array([1, 2, 3, 4]))
-    pass
+
+    # 각 년도별 상시 근무자 인원 및 청년 근무자 인원
+    calendar_sum = calendar.iloc[:, :].sum(axis=0)
+    calendar_sum.iloc[0] = '합계'
+
