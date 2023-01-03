@@ -21,7 +21,7 @@ def load_workdate(path):
         사업자가입명부 엑셀 파일을 로드 합니다.
 
     :param str path:
-    :return:
+    :Dateframe return:
     """
 
     # 엑셀 파일 로드
@@ -46,7 +46,7 @@ def get_dates_by_month(start_date, end_date, option='end'):
          2) start : 매달 첫번째 날 정보를 제공
 
     :list return:
-     [yyyy-mm-dd, yyyy-mm-dd, ... yyyy-mm-dd]
+        [yyyy-mm-dd, yyyy-mm-dd, ... yyyy-mm-dd]
 
     """
     if option == 'end':
@@ -76,6 +76,15 @@ def check_workdate(start_date, end_date, acquisi_date, disqual_date):
 
     :return DataFrame:
         지정된 기간동안에 각 달(month)별로 근무 여부가 check 되어 있는 table
+        example)
+            +--------+----------+----------+----------+----------+--------+
+            |        | 2018.1.1 | 2018.1.2 | 2018.1.3 | 2018.1.4 | 2018.1.5|
+            +--------+----------+----------+----------+----------+--------+
+            | 강대영 | TRUE     | FALSE    | FALSE    | FALSE    | FALSE  |
+            +--------+----------+----------+----------+----------+--------+
+            | 강혜진 | TRUE     | TRUE     | TRUE     | TRUE     | TRUE   |
+            +--------+----------+----------+----------+----------+--------+
+
     """
 
     # 지정된 기간내 마지막 날짜 추출
@@ -99,7 +108,6 @@ def sum_by_yaer(calendar_df, years):
         columns : years
         index : calendar_df.index
         values : 각 년도별 일한 개월 수
-
     """
     # 각 년도별 근무 날짜를 취합합니다.
     totalwork_df = pd.DataFrame()
@@ -125,7 +133,8 @@ def resident2date(resident_codes):
         주민등록번호 샘플: 900117-1xxxxxx
 
     :param pd.Series resident_codes:
-    :return:
+    :datetime return: yyyymmdd
+
     """
 
     # 생년 월일을 계산한다.
@@ -165,6 +174,15 @@ def disable_calender(start_date, end_date, disable_workdate_df, curr_date, *disa
 
         지정된 기간내 장애인 기간 복무 기간을 체크해 반환합니다.
     :DataFrame return:
+        example)
+            +--------+----------+----------+----------+----------+--------+
+            |        | 2018.1.1 | 2018.1.2 | 2018.1.3 | 2018.1.4 | 2018.1.5|
+            +--------+----------+----------+----------+----------+--------+
+            | 강대영 | TRUE     | FALSE    | FALSE    | FALSE    | FALSE  |
+            +--------+----------+----------+----------+----------+--------+
+            | 강혜진 | TRUE     | TRUE     | TRUE     | TRUE     | TRUE   |
+            +--------+----------+----------+----------+----------+--------+
+
 
     """
 
@@ -183,9 +201,8 @@ def disable_calender(start_date, end_date, disable_workdate_df, curr_date, *disa
 def generate_work_calendar(path, start_date, end_date, curr_date):
     """
     Description:
-        상시 근로자와 청년 근로자 년도별 총 근무 달수를 계산해 반환합니다.
-        210살 이상 생존한 사람이 있다면 해당 기능에 문제가 생길수 있습니다.
-
+        각 인원별, 각 년도별 상시 근로자와 청년 근로자 총 근무 달수를 계산해 반환합니다.
+        ⚠️ Warning : 210살 이상 생존한 사람이 있다면 해당 기능에 문제가 생길수 있습니다.
 
     Args:
         :param str path: ex) './data/사업장가입자명부_20221222 (상실자포함).xls'
@@ -193,7 +210,16 @@ def generate_work_calendar(path, start_date, end_date, curr_date):
         :param str end_date: yyyy-mm-dd, example) '2022-12-31'
         :param timestamp curr_date: yyyy-mm-dd, pd.Timestamp.today()
 
-    :return:
+    :DataFrame return:
+        example)
+                +--------+--------+--------+--------+--------+--------+
+                |        | 2018년 | 2019년 | 2020년 | 2021년 | 2022년 |
+                +--------+--------+--------+--------+--------+--------+
+                | 강대영 | 12     | 12     | 12     | 12     | 12     |
+                +--------+--------+--------+--------+--------+--------+
+                | 강혜진 | 12     | 12     | 12     | 12     | 12     |
+                +--------+--------+--------+--------+--------+--------+
+
     """
     start_year = pd.to_datetime(start_date).year
     end_year = pd.to_datetime(end_date).year
