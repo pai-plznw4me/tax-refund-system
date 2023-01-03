@@ -320,7 +320,7 @@ def first_deduction(young_counts, etc_counts):
     wkr_diff = yng_diff + etc_diff
 
     # 최초 공제 시기
-    first_deduction_index = np.where(wkr_diff > 0)
+    first_deduction_index = np.where(wkr_diff > 0)[0]
 
     # 최초 공제 세부사항
     target_young_deductions = yng_diff[first_deduction_index]  # 청년
@@ -391,4 +391,8 @@ if __name__ == '__main__':
     # 각 년도별 상시 근무자 인원 및 청년 근무자 인원
     calendar_sum = calendar.iloc[:, :].sum(axis=0)
     calendar_sum.iloc[0] = '합계'
+
+    # 공제 금액 계산
+    first_deduction_infos = first_deduction(calendar_sum[1:1 + 5].values, calendar_sum[1 + 5:1 + 5 + 5].values)
+
 
