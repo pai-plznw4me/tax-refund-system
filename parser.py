@@ -180,21 +180,32 @@ def disable_calender(start_date, end_date, disable_workdate_df, curr_date, *disa
     return disable_workdate_df
 
 
-def parser():
-    curr_date = pd.Timestamp.today()
+def generate_work_calendar(path, start_date, end_date, curr_date):
+    """
+    Description:
+        상시 근로자와 청년 근로자 년도별 총 근무 달수를 계산해 반환합니다.
 
-    date1 = "2017-01-01"  # input start date
-    date2 = "2022-12-31"  # input end date
-    month_list = [i.strftime("%y-%m") for i in pd.date_range(start=date1, end=date2, freq='MS')]
+    Args:
+        :param str path: ex) './data/사업장가입자명부_20221222 (상실자포함).xls'
+        :param str start_date: yyyy-mm-dd, example) '2017-01-01'
+        :param str end_date: yyyy-mm-dd, example) '2022-12-31'
+        :param timestamp curr_date: yyyy-mm-dd, pd.Timestamp.today()
+
+    :return:
+    """
+    start_year = pd.to_datetime(start_date).year
+    end_year = pd.to_datetime(end_date).year
+    years = list(range(start_year, end_year))
 
     # index 는 각 개인 고유 번호(pk)이어야 한다.
-    df = load_workdate('./data/사업장가입자명부_20221222 (상실자포함).xls')
+    df = load_workdate(path)
     name = df.iloc[:, 1]
+
     # 상시 근무 날짜를 측정합니다.
     acquisi_date = pd.to_datetime(df.iloc[:, -2])
     disqual_date = pd.to_datetime(df.iloc[:, -1]).fillna(curr_date)
-    workdate_df = check_workdate("2017-01-01", "2022-12-31", acquisi_date, disqual_date)
-    workdate_sum_df = sum_by_yaer(workdate_df, [2018, 2019, 2020, 2021, 2022])
+    workdate_df = check_workdate(start_date, end_date, acquisi_date, disqual_date)
+    workdate_sum_df = sum_by_yaer(workdate_df, years)
 
     # skelton dataframe
     skeleton_df = workdate_df.copy()
@@ -211,7 +222,7 @@ def parser():
     period = pd.to_timedelta(military_period(), unit='D')
     period.index = young_disqual_date.index
     young_disqual_date = young_disqual_date + period
-    young_workdate_df = check_workdate("2017-01-01", "2022-12-31", acquisi_date, young_disqual_date)
+    young_workdate_df = check_workdate(start_date, end_date, acquisi_date, young_disqual_date)
     young_workdate_sum_df = sum_by_yaer(young_workdate_df, [2018, 2019, 2020, 2021, 2022])
     young_df = pd.concat([name, acquisi_date, young_disqual_date, young_workdate_sum_df], axis=1)
 
@@ -219,13 +230,14 @@ def parser():
     elder_offset = 60
     elder_acquisi_date = birth_date + pd.DateOffset(years=elder_offset)
     elder_disqual_date = elder_acquisi_date + pd.DateOffset(years=1000)
-    elder_workdate_df = check_workdate("2017-01-01", "2022-12-31", elder_acquisi_date, elder_disqual_date)
+    elder_workdate_df = check_workdate(start_date, end_date, elder_acquisi_date, elder_disqual_date)
     elder_workdate_sum_df = sum_by_yaer(elder_workdate_df, [2018, 2019, 2020, 2021, 2022])
     elder_df = pd.concat([name, elder_acquisi_date, elder_disqual_date, elder_workdate_sum_df], axis=1)
 
     # 장애인 기간
     disables = [(1, '1989-04-20', '1989-05-20'), (1, '1989-01-01', None), (2, '1991-01-01', None),
                 (3, '2018-07-20', None)]
+
     disable_workdate_df = skeleton_df.copy()
     disable_workdate_df = disable_calender("2017-01-01", "2022-12-31", disable_workdate_df, curr_date, *disables)
     disable_workdate_sum_df = sum_by_yaer(disable_workdate_df, [2018, 2019, 2020, 2021, 2022])
@@ -248,3 +260,57 @@ def parser():
     workdate_by_year_sum = workdate_by_year.iloc[:, 1:].sum(axis=0)
 
     return workdate_by_year
+
+
+def get_diff(workers):
+    """
+    년도별 근로자 차이를 계산해 반환합니다.
+    :param workers:
+    :return:
+    """
+    rolled_workers = np.roll(workers, 1)
+    diff = workers - rolled_workers
+    diff[0] = 0
+    return diff
+
+
+def firset_deduction(young_counts, etc_counts):
+    """
+    Description:
+        최초 공제 정보를 계산해 반환합니다.
+
+    :param ndarray young_counts: 청년 근로자, 값 순서는 연도순으로 나열되어 있어야 합니다.
+    :param ndarray etc_counts: 기타 근로자
+    :return:
+        [[index, 청년 공제 증가, 기타 공제 증가],
+         [index, 청년 공제 증가, 기타 공제 증가]]
+    공제 증가 최소값은 0
+    """
+    yng_diff = get_diff(young_counts)
+    etc_diff = get_diff(etc_counts)
+    wkr_diff = yng_diff + etc_diff
+
+    # 최초 공제 시기
+    first_deduction_index = np.where(wkr_diff > 0)
+
+    # 최초 공제 세부사항
+    target_young_deductions = yng_diff[first_deduction_index]  # 청년
+    target_etc_deductions = etc_diff[first_deduction_index]  # 기타
+
+    # 세부 사항에서 rate 가 음수이면 0으로 치환합니다.
+    target_young_deductions = np.where(target_young_deductions <= 0, 0, target_young_deductions)
+    target_etc_deductions = np.where(target_etc_deductions <= 0, 0, target_etc_deductions)
+
+    # axis=0 최초 공제 연도, axis=1 (index, 청년 공제 비율, 기타 공제 비율)
+    first_deduction_infos = np.stack([first_deduction_index, target_young_deductions, target_etc_deductions], axis=-1)
+    return first_deduction_infos
+
+
+if __name__ == '__main__':
+    path = './data/사업장가입자명부_20221222 (상실자포함).xls'
+    start_date = '2017-01-01'
+    end_date = '2022-12-31'
+    curr_date = pd.Timestamp.today()
+    calendar = generate_work_calendar(path, start_date, end_date, curr_date=curr_date)
+    dff = get_diff(np.array([1, 2, 3, 4]))
+    pass
