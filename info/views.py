@@ -26,7 +26,6 @@ def index(request):
         # File 저장
         dirpath = './media'
         fs = FileSystemStorage(location=dirpath)
-        files = [employee, disable, army, executive]
         file_paths = []
         filename = fs.save(employee.name, employee)
         filepath = os.path.join(dirpath, filename)
