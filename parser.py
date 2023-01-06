@@ -567,7 +567,6 @@ def get_deduction(deductions, year):
     """
     tax = []
     for deduction_df in deductions:
-
         mask = deduction_df < 0
         deduction_df[mask] = 0
         deduction_df = deduction_df.fillna(0)
@@ -615,15 +614,21 @@ def get_refund(deductions, year):
     return refund_tax
 
 
-if __name__ == '__main__':
-    path = './data/사업장가입자명부_20221222 (상실자포함).xls'
-
-    # 지정된 년도별, 각 사람별 상시 근무자 개월 수, 청년 근무자 개월 수 추출
-    start_date = '2018-01-01'
-    end_date = '2022-12-31'
-    curr_date = pd.Timestamp.today()
+def deduction_and_tax(path, start_date, end_date, curr_date, capital_area):
+    """
+    Description:
+        :param path:
+            path = './data/사업장가입자명부_20221222 (상실자포함).xls'
+        :param start_date:
+            start_date = '2018-01-01'
+        :param end_date:
+            end_date = '2022-12-31'
+        :param curr_date:
+            curr_date = pd.Timestamp.today()
+        :return:
+    """
+    years = list(range(pd.to_datetime(start_date).year, pd.to_datetime(end_date).year + 1))
     calendar = generate_work_calendar(path, start_date, end_date, curr_date=curr_date)
-    capital_area = True
 
     # 각 년도별 상시 근무자 인원 및 청년 근무자 인원
     calendar_sum = calendar.iloc[:, :].sum(axis=0)
@@ -637,7 +642,7 @@ if __name__ == '__main__':
     # 각 년도별 공제 표 생성
     deductions = []
     first_deduction_infos = first_deduction(n_youngs, n_etc)
-    years = [2018, 2019, 2020, 2021, 2022]
+
     for info in first_deduction_infos:
         index = info[0]
         yng_diff = info[1]
@@ -660,3 +665,58 @@ if __name__ == '__main__':
     refund_tax = get_refund(deductions, 2022)
 
     print('2022년 공제 받은 금액 : {} \n2022년 추가 납부 금액 : {}'.format(deduction_tax, refund_tax))
+    return deduction_tax, refund_tax, calendar
+
+
+if __name__ == '__main__':
+    # path = './data/사업장가입자명부_20221222 (상실자포함).xls'
+    #
+    # # 지정된 년도별, 각 사람별 상시 근무자 개월 수, 청년 근무자 개월 수 추출
+    # start_date = '2018-01-01'
+    # end_date = '2022-12-31'
+    # curr_date = pd.Timestamp.today()
+    # years = list(range(pd.to_datetime(start_date).year, pd.to_datetime(end_date).year + 1))
+    # calendar = generate_work_calendar(path, start_date, end_date, curr_date=curr_date)
+    # capital_area = True
+    #
+    # # 각 년도별 상시 근무자 인원 및 청년 근무자 인원
+    # calendar_sum = calendar.iloc[:, :].sum(axis=0)
+    # calendar_sum.iloc[0] = '합계'
+    #
+    # # 청년 근로 및 기타 근로자 수를 계산합니다.
+    # n_workers = calendar_sum[1:1 + 5].values
+    # n_youngs = calendar_sum[1 + 5:1 + 5 + 5].values
+    # n_etc = n_workers - n_youngs
+    #
+    # # 각 년도별 공제 표 생성
+    # deductions = []
+    # first_deduction_infos = first_deduction(n_youngs, n_etc)
+    # for info in first_deduction_infos:
+    #     index = info[0]
+    #     yng_diff = info[1]
+    #     etc_diff = info[2]
+    #     mask = deduction_mask(n_youngs, n_etc, index)
+    #     deduction_df = pd.DataFrame(mask.T, columns=years, index=['young', 'etc'])
+    #     #
+    #     young_tax, etc_tax = calculate_tax(year=years[index],
+    #                                        capital_area=capital_area,
+    #                                        yng_diff=yng_diff,
+    #                                        etc_diff=etc_diff)
+    #     #
+    #     deduction_df.iloc[:, :] = np.array([[young_tax], [etc_tax]]) * deduction_df.values
+    #     deductions.append(deduction_df)
+    #
+    # # 총합 공제 금액 계산
+    # deduction_tax = get_deduction(deductions, 2022)
+    #
+    # # 공제 금액 반납
+    # refund_tax = get_refund(deductions, 2022)
+
+    # /print('2022년 공제 받은 금액 : {} \n2022년 추가 납부 금액 : {}'.format(deduction_tax, refund_tax))
+
+    path = './data/사업장가입자명부_20221222 (상실자포함).xls'
+    start_date = '2018-01-01'
+    end_date = '2022-12-31'
+    curr_date = pd.Timestamp.today()
+    deduction_tax, refund_tax = deduction_and_tax(path, start_date, end_date, curr_date, True)
+    pass
