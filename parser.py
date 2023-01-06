@@ -97,12 +97,13 @@ def check_workdate(start_date, end_date, acquisi_date, disqual_date):
     return calendar_df
 
 
-def sum_by_yaer(calendar_df, years):
+def sum_by_yaer(calendar_df, years, prefix=None):
     """
     Description:
 
     :param DataFrame calendar_df:
     :param list years: [int, int, ... int ]
+    :param str prefix: column 명 앞에 붙여질 접두사
     :return DataFrame:
         columns : years
         index : calendar_df.index
@@ -119,7 +120,11 @@ def sum_by_yaer(calendar_df, years):
 
         # 각 년도별로 일한 날짜를 더해 제공합니다.
         total_works = sliced_df.values.sum(axis=1)
-        totalwork_df[year] = total_works
+        if prefix:
+            column_name = prefix + str(year)
+        else:
+            column_name = str(year)
+        totalwork_df[column_name] = total_works
 
     return totalwork_df
 
@@ -212,7 +217,7 @@ def generate_work_calendar(path, start_date, end_date, curr_date):
     :DataFrame return:
         example)
                 +--------+--------+--------+--------+--------+--------+
-                |        | 2018년 | 2019년 | 2020년 | 2021년 | 2022년 |
+                |  이름  | 2018년 | 2019년 | 2020년 | 2021년 | 2022년    |
                 +--------+--------+--------+--------+--------+--------+
                 | 강대영 | 12     | 12     | 12     | 12     | 12     |
                 +--------+--------+--------+--------+--------+--------+
@@ -227,13 +232,14 @@ def generate_work_calendar(path, start_date, end_date, curr_date):
     # index 는 각 개인 고유 번호(pk)이어야 한다.
     df = load_workdate(path)
     name = df.iloc[:, 1]
+    name.name = '이름'
     dummy_date = pd.to_datetime('1800-01-01')
 
     # 상시 근무 날짜를 측정합니다.
     acquisi_date = pd.to_datetime(df.iloc[:, -2])
     disqual_date = pd.to_datetime(df.iloc[:, -1]).fillna(curr_date)
     workdate_df = check_workdate(start_date, end_date, acquisi_date, disqual_date)
-    workdate_sum_df = sum_by_yaer(workdate_df, years)
+    workdate_sum_df = sum_by_yaer(workdate_df, years, prefix='(상시)')
 
     # skelton dataframe
     skeleton_df = workdate_df.copy()
@@ -275,7 +281,7 @@ def generate_work_calendar(path, start_date, end_date, curr_date):
 
     # 통합 근무 기간
     merged_young_workdate = young_workdate_df | elder_workdate_df | disable_workdate_df
-    merged_young_workdate_sum = sum_by_yaer(merged_young_workdate, years)
+    merged_young_workdate_sum = sum_by_yaer(merged_young_workdate, years, prefix='(청년)')
 
     # 임직원 및 계약직 직원 제거
     excutive_indices = [2, 3, 4]
@@ -629,6 +635,10 @@ def deduction_and_tax(path, start_date, end_date, curr_date, capital_area):
     """
     years = list(range(pd.to_datetime(start_date).year, pd.to_datetime(end_date).year + 1))
     calendar = generate_work_calendar(path, start_date, end_date, curr_date=curr_date)
+    total = calendar.sum(axis=0)
+    total.iloc[0] = '합계'
+    total.name = '합계'
+    calendar = calendar.append(total)
 
     # 각 년도별 상시 근무자 인원 및 청년 근무자 인원
     calendar_sum = calendar.iloc[:, :].sum(axis=0)
@@ -669,54 +679,9 @@ def deduction_and_tax(path, start_date, end_date, curr_date, capital_area):
 
 
 if __name__ == '__main__':
-    # path = './data/사업장가입자명부_20221222 (상실자포함).xls'
-    #
-    # # 지정된 년도별, 각 사람별 상시 근무자 개월 수, 청년 근무자 개월 수 추출
-    # start_date = '2018-01-01'
-    # end_date = '2022-12-31'
-    # curr_date = pd.Timestamp.today()
-    # years = list(range(pd.to_datetime(start_date).year, pd.to_datetime(end_date).year + 1))
-    # calendar = generate_work_calendar(path, start_date, end_date, curr_date=curr_date)
-    # capital_area = True
-    #
-    # # 각 년도별 상시 근무자 인원 및 청년 근무자 인원
-    # calendar_sum = calendar.iloc[:, :].sum(axis=0)
-    # calendar_sum.iloc[0] = '합계'
-    #
-    # # 청년 근로 및 기타 근로자 수를 계산합니다.
-    # n_workers = calendar_sum[1:1 + 5].values
-    # n_youngs = calendar_sum[1 + 5:1 + 5 + 5].values
-    # n_etc = n_workers - n_youngs
-    #
-    # # 각 년도별 공제 표 생성
-    # deductions = []
-    # first_deduction_infos = first_deduction(n_youngs, n_etc)
-    # for info in first_deduction_infos:
-    #     index = info[0]
-    #     yng_diff = info[1]
-    #     etc_diff = info[2]
-    #     mask = deduction_mask(n_youngs, n_etc, index)
-    #     deduction_df = pd.DataFrame(mask.T, columns=years, index=['young', 'etc'])
-    #     #
-    #     young_tax, etc_tax = calculate_tax(year=years[index],
-    #                                        capital_area=capital_area,
-    #                                        yng_diff=yng_diff,
-    #                                        etc_diff=etc_diff)
-    #     #
-    #     deduction_df.iloc[:, :] = np.array([[young_tax], [etc_tax]]) * deduction_df.values
-    #     deductions.append(deduction_df)
-    #
-    # # 총합 공제 금액 계산
-    # deduction_tax = get_deduction(deductions, 2022)
-    #
-    # # 공제 금액 반납
-    # refund_tax = get_refund(deductions, 2022)
-
-    # /print('2022년 공제 받은 금액 : {} \n2022년 추가 납부 금액 : {}'.format(deduction_tax, refund_tax))
-
     path = './data/사업장가입자명부_20221222 (상실자포함).xls'
     start_date = '2018-01-01'
     end_date = '2022-12-31'
     curr_date = pd.Timestamp.today()
-    deduction_tax, refund_tax = deduction_and_tax(path, start_date, end_date, curr_date, True)
+    deduction_tax, refund_tax, calendar = deduction_and_tax(path, start_date, end_date, curr_date, True)
     pass

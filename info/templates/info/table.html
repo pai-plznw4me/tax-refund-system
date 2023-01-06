@@ -1,0 +1,22 @@
+<table class="table align-items-center mb-0">
+    <thead>
+    <tr>
+        {% for col in  table_df.columns %}
+            <th class="text-uppercase text-secondary text-xxs font-weight-bolder">
+                {{ col }}
+            </th>
+        {% endfor %}
+    </tr>
+    </thead>
+    <tbody>
+    {% for index, row in table_df.iterrows %}
+        <tr>
+            {% for cell in row %}
+                <td>
+                    <span class="text-xs font-weight-bold"> {{ cell }} </span>
+                </td>
+            {% endfor %}
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
