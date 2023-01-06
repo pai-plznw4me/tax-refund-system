@@ -46,7 +46,6 @@ def index(request):
                    'deduction': deduction,
                    'tax': tax, }
 
-
         return render(request, template_name='info/index.html', context=context)
 
 
