@@ -16,11 +16,10 @@ import pandas as pd
 def nan2boolean(series):
     """
     Description:
-        DataFrame Series 을 변환합니다.
+        DataFrame Series 을 datatype 을 boolean 으로 변환합니다.
+        NaN 은 False 로 변환합니다. 그 이외는 True 로 변환합니다.
 
     :param pd.Series series:
-        series 내 nan 값은 False 로 nan 이 아닌값은 True 변환합니다.
-
     :pd.Series return:
     """
     series = series.copy()
@@ -37,8 +36,8 @@ def load_workdate(path):
         사업자가입명부 엑셀 파일을 로드 합니다.
         장애인, 임원, 계약직 boolean mask 으로 변환합니다.
 
-    :param str path:
-    :Dateframe return:
+    :param str path: 사업자 가입자 명부
+    :pd.Dataframe return:
     """
 
     # 엑셀 파일 로드
@@ -61,11 +60,14 @@ def load_workdate(path):
 def get_dates_by_month(start_date, end_date, option='end'):
     """
     Description:
-        지정된 기간내 달 단위로 날짜 정보(yyyy-mm-dd)를 제공합니다.
+        지정된 기간 내 달(month) 단위로 날짜 정보(yyyy-mm-dd)를 제공합니다.
+    Usage:
+        >>> get_dates_by_month('2023-01-01', '2023-03-01', option='end')
+        # ['2018-01-31', '2018-02-28']
 
     Args:
-        :param str start_date: yyyy-mm-dd
-        :param str end_date: yyyy-mm-dd
+        :param pd.datetime start_date: yyyy-mm-dd
+        :param pd.datetime end_date: yyyy-mm-dd
         :param option:
          1) end : 매달 마지막 날 정보를 제공
          2) start : 매달 첫번째 날 정보를 제공
@@ -91,7 +93,8 @@ def get_dates_by_month(start_date, end_date, option='end'):
 def check_workdate(start_date, end_date, acquisi_date, disqual_date):
     """
     Description:
-        시작날짜와 종료날짜 사이 각 달에 해당 인원이 근무 했는지를 파악합니다.
+        시작 날짜와 종료 날짜 사이 각 달에 해당 인원이 근무 했는지를 파악해 반환합니다.
+        근무 여부 판단 상세 기준: 각 달의 마지막날이 기준 날짜가 됩니다. 기준 날짜 이전에 입사, 기준 날짜 퇴사 시 True 로 합니다.
 
     Args:
         :param datetime start_date: 시작 날짜
@@ -115,7 +118,8 @@ def check_workdate(start_date, end_date, acquisi_date, disqual_date):
     # 지정된 기간내 마지막 날짜 추출
     dates = get_dates_by_month(start_date, end_date, option='end')
 
-    # 각 년도의 마지막날을 기준으로 자격취득이 해당 날짜를 기준으로 이전에 입사했고 해당 날짜를 기준으로 이후에 퇴사했으면 True 아니면 False 을 준다.
+    # 각 달의 마지막날이 기준 날짜,
+    # 기준 날짜 이전에 입사 그리고 기준 날짜 퇴사했으면 True 아니면 False 을 준다.
     calendar_df = pd.DataFrame()
     for date in dates:
         mask = (acquisi_date <= date) & (disqual_date >= date)
@@ -126,26 +130,40 @@ def check_workdate(start_date, end_date, acquisi_date, disqual_date):
 def sum_by_yaer(calendar_df, years, prefix=None):
     """
     Description:
+        년도 별 근무자 수를 집계(sum)해 반환
 
     :param DataFrame calendar_df:
+       ⚠️ calendar_df column 이름은 datatime 으로 이루어져야 한다.
+            example)
+            +--------+----------+----------+----------+----------+--------+
+            |        |2018.1.31| 018.2.28 |2018.3.31| 2018.4.30 |2018.5.31|
+            +--------+----------+----------+----------+----------+--------+
+            | 강대영 | TRUE     | FALSE    | FALSE    | FALSE    | FALSE  |
+            +--------+----------+----------+----------+----------+--------+
+            | 강혜진 | TRUE     | TRUE     | TRUE     | TRUE     | TRUE   |
+            +--------+----------+----------+----------+----------+--------+
     :param list years: [int, int, ... int ]
     :param str prefix: column 명 앞에 붙여질 접두사
+
     :return DataFrame:
         columns : years
         index : calendar_df.index
         values : 각 년도별 일한 개월 수
     """
-    # 각 년도별 근무 날짜를 취합합니다.
+
+    # 각 년도별 집계(total)테이블 생성
     totalwork_df = pd.DataFrame()
     totalwork_df.index = calendar_df.index
     calendar_years = calendar_df.columns.map(lambda x: x.year)
+
+    # 각 년도별 근무 날짜 집계
     for ind, year in enumerate(years):
-        # 각 년도에 해당 하는 column 을 추출합니다.
+        # 각 년도에 해당 하는 column 을 추출
         mask = (calendar_years == year)
         sliced_df = calendar_df.loc[:, mask]
-
-        # 각 년도별로 일한 날짜를 더해 제공합니다.
+        # 각 년도별 근무 달 수 집계(sum)
         total_works = sliced_df.values.sum(axis=1)
+        # column 이름 변경
         if prefix:
             column_name = prefix + str(year)
         else:
@@ -159,12 +177,15 @@ def resident2date(resident_codes):
     """
     Description:
         주민등록번호를 날짜로 변환합니다.
+        (주민등록번호 샘플: 900117-1xxxxxx)
         뒷번호가 1, 2, 3, 4 여부에 따라 19년도 출생인지 20년도 출생인지가 결정 됩니다.
-        주민등록번호 샘플: 900117-1xxxxxx
 
     :param pd.Series resident_codes:
+    example)
+        [900117-1xxxxxx, 900117-1xxxxxx, ... 900117-1xxxxxx]
     :datetime return: yyyymmdd
-
+    example)
+        19900117
     """
 
     # 생년 월일을 계산한다.
@@ -179,12 +200,12 @@ def resident2date(resident_codes):
 def military_period(enlist, discharge):
     """
     Description:
-        각 인원별로 군 복무 기간을 반환합니다.
+        각 인원별 군 복무 기간을 일(day) 단위로 계산해 반환합니다.
     Args:
-        :param pd.Series enlist:
-        :param pd.Series discharge:
-    :Series return:
+        :param pd.Series enlist: 입대 날짜
+        :param pd.Series discharge: 전역 날짜
 
+    :Series return:
     """
     duration = discharge - enlist
     duration = duration.fillna(pd.Timedelta(0))
@@ -192,57 +213,22 @@ def military_period(enlist, discharge):
     return period
 
 
-def disable_calender(start_date, end_date, disable_workdate_df, curr_date, *disables):
+def generate_work_calendar(start_date, end_date, acquisi_date, disqual_date):
     """
     Description:
-        장애인 취득 시기를 calender 로 제공
+        각 인원별, 각 년도별 상시 근로자와 청년 근로자 총 근무 달수를 계산해 반환합니다.
+        ⚠️ Warning : 210살 이상 생존한 사람이 있다면 해당 기능에 문제가 생길수 있습니다.
 
     Args:
-        :param str start_date: 'yyyy-mm-dd'
-        :param str end_date: 'yyyy-mm-dd'
-        :param DataFrame disable_workdate_df:
-        :argument: 사용자 index 정보 및 장애인 자격 취득 시기, 장애인 자격 상실 시기 정보를 tuple 로 제공
-            [(index, acquisi_date, disqual_date),  (index, acquisi_date, disqual_date) ... (index, acquisi_date, disqual_date)]
-            example)
-                [(0, '1989-04-20', '1989-05-20'), (0, '1989-01-01', None), (1, '1991-01-01', None), (2, '2018-07-20', None)]
+        :param str start_date: yyyy-mm-dd, example) '2017-01-01'
+        :param str end_date: yyyy-mm-dd, example) '2022-12-31'
+        :param pd.Series acquisi_date: 자격취득일
+            example) [timestamp, timestamp, ... timestamp]
+        :param pd.Series disqual_date: 자격상실일
+            example) [timestamp, timestamp, ... timestamp]
 
-        지정된 기간내 장애인 기간 복무 기간을 체크해 반환합니다.
     :DataFrame return:
-        example)
-            +--------+----------+----------+----------+----------+--------+
-            |        | 2018.1.1 | 2018.1.2 | 2018.1.3 | 2018.1.4 | 2018.1.5|
-            +--------+----------+----------+----------+----------+--------+
-            | 강대영 | TRUE     | FALSE    | FALSE    | FALSE    | FALSE  |
-            +--------+----------+----------+----------+----------+--------+
-            | 강혜진 | TRUE     | TRUE     | TRUE     | TRUE     | TRUE   |
-            +--------+----------+----------+----------+----------+--------+
-    """
-
-    for disable in disables:
-        index, acquisi_date, disqual_date = disable
-        if not disqual_date:
-            disqual_date = curr_date
-        disable_calendar_df = check_workdate(start_date,
-                                             end_date,
-                                             pd.to_datetime(acquisi_date),
-                                             pd.to_datetime(disqual_date)).iloc[0]
-        disable_workdate_df.loc[index, :] = disable_workdate_df.loc[index, :] | disable_calendar_df
-    return disable_workdate_df
-
-
-def generate_young_calendar(start_date, end_date, acquisi_date, disqual_date, enlist_date, discharge_date,
-                            resident_number):
-    """
-    :param Datetime start_date:
-    :param Datetime end_date:
-    :param Datetime acquisi_date:
-    :param Datetime disqual_date:
-    :param Datetime enlist_date:
-    :param Datetime discharge_date:
-    :param Datetime resident_number:
-    :return:
-    :DataFrame return:
-        young_workdate_df: 근무 달수 별로 일한 달에 True, 일하지 않은 달에 False
+        workdate_df: 근무 달수 별로 일한 달에 True, 일하지 않은 달에 False
             +----------+----------+----------+----------+--------+
             | 2018.1.1 | 2018.1.2 | 2018.1.3 | 2018.1.4 | 2018.1.5|
             +----------+----------+----------+----------+--------+
@@ -251,7 +237,7 @@ def generate_young_calendar(start_date, end_date, acquisi_date, disqual_date, en
             | TRUE     | TRUE     | TRUE     | TRUE     | TRUE   |
             +----------+----------+----------+----------+--------+
 
-        young_workdate_sum_df: 근무 달수를 연도별로 더함
+        workdate_sum_df: 근무 달수를 연도별로 더함
             +--------+--------+--------+--------+--------+
             | 2018년 | 2019년 | 2020년 | 2021년 | 2022년    |
             +--------+--------+--------+--------+--------+
@@ -259,7 +245,59 @@ def generate_young_calendar(start_date, end_date, acquisi_date, disqual_date, en
             +--------+--------+--------+--------+--------+
             | 12     | 12     | 12     | 12     | 12     |
             +--------+--------+--------+--------+--------+
+
     """
+    # 적용 연도
+    start_year = pd.to_datetime(start_date).year
+    end_year = pd.to_datetime(end_date).year
+    years = list(range(start_year, end_year + 1))
+
+    # 인원별 상시 근무 날짜 체크 합니다.
+    workdate_df = check_workdate(start_date, end_date, acquisi_date, disqual_date)
+    workdate_sum_df = sum_by_yaer(workdate_df, years, prefix='(상시)')
+
+    return workdate_df, workdate_sum_df
+
+
+def generate_young_calendar(start_date, end_date, acquisi_date, disqual_date, enlist_date, discharge_date,
+                            resident_number):
+    """
+    Description:
+        청년 근로자 근로 테이블과 청년 근로 집계 테이블을 생성합니다.
+
+    Args:
+        :param str start_date: yyyy-mm-dd, example) '2017-01-01'
+        :param str end_date: yyyy-mm-dd, example) '2022-12-31'
+        :param pd.Series acquisi_date: 자격취득일
+            example) [timestamp, timestamp, ... timestamp]
+        :param pd.Series disqual_date: 자격상실일
+            example) [timestamp, timestamp, ... timestamp]
+        :param Datetime enlist_date: 입대 날짜
+            example) [timestamp, timestamp, ... timestamp]
+        :param Datetime discharge_date: 전역 날짜
+            example) [timestamp, timestamp, ... timestamp]
+        :param Datetime resident_number: 생년 월일
+            example) [yyyymmdd, yyyymmdd, ... yyyymmdd]
+        :return:
+            :DataFrame young_workdate_df: 근무 달수 별로 일한 달에 True, 일하지 않은 달에 False
+                +--------+----------+----------+----------+----------+--------+
+                |        |2018.1.31|2018.2.28 |2018.3.31 | 2018.4.30|2018.5.31|
+                +--------+----------+----------+----------+----------+--------+
+                | 강대영 | TRUE     | FALSE    | FALSE    | FALSE    | FALSE  |
+                +--------+----------+----------+----------+----------+--------+
+                | 강혜진 | TRUE     | TRUE     | TRUE     | TRUE     | TRUE   |
+                +--------+----------+----------+----------+----------+--------+
+
+            :DataFrame young_workdate_sum_df: 근무 달수를 연도별로 더함
+                +--------+--------+--------+--------+--------+
+                | 2018년 | 2019년 | 2020년 | 2021년 | 2022년    |
+                +--------+--------+--------+--------+--------+
+                | 12     | 12     | 12     | 12     | 12     |
+                +--------+--------+--------+--------+--------+
+                | 12     | 12     | 12     | 12     | 12     |
+                +--------+--------+--------+--------+--------+
+    """
+    # 적용 연도
     years = get_years(start_date, end_date)
     dummy_date = pd.to_datetime('1800-01-01')
 
@@ -285,31 +323,36 @@ def generate_young_calendar(start_date, end_date, acquisi_date, disqual_date, en
 
 def generate_elder_calendar(start_date, end_date, acquisi_date, disqual_date, resident_number):
     """
+    Description:
+        청년 근로자 근로 테이블과 청년 근로 집계 테이블을 생성합니다.
 
-    :param Datetime start_date:
-    :param Datetime end_date:
-    :param Datetime acquisi_date:
-    :param Datetime disqual_date:
-    :param DataFrame resident_number:
-    :return:
-    :DataFrame return:
-        elder_workdate_df: 근무 달수 별로 일한 달에 True, 일하지 않은 달에 False
-            +----------+----------+----------+----------+--------+
-            | 2018.1.1 | 2018.1.2 | 2018.1.3 | 2018.1.4 | 2018.1.5|
-            +----------+----------+----------+----------+--------+
-            | TRUE     | FALSE    | FALSE    | FALSE    | FALSE  |
-            +--------+----------+----------+----------+----------+
-            | TRUE     | TRUE     | TRUE     | TRUE     | TRUE   |
-            +----------+----------+----------+----------+--------+
+    Args:
+        :param str start_date: yyyy-mm-dd, example) '2017-01-01'
+        :param str end_date: yyyy-mm-dd, example) '2022-12-31'
+        :param pd.Series acquisi_date: 자격취득일
+            example) [timestamp, timestamp, ... timestamp]
+        :param pd.Series disqual_date: 자격상실일
+            example) [timestamp, timestamp, ... timestamp]
+        :param DataFrame resident_number:
+            example) [yyyymmdd, yyyymmdd, ... yyyymmdd]
+        :return:
+            elder_workdate_df: 근무 달수 별로 일한 달에 True, 일하지 않은 달에 False
+                +--------+----------+----------+----------+----------+--------+
+                |        |2018.1.31|2018.2.28 |2018.3.31 | 2018.4.30|2018.5.31|
+                +--------+----------+----------+----------+----------+--------+
+                | 강대영 | TRUE     | FALSE    | FALSE    | FALSE    | FALSE  |
+                +--------+----------+----------+----------+----------+--------+
+                | 강혜진 | TRUE     | TRUE     | TRUE     | TRUE     | TRUE   |
+                +--------+----------+----------+----------+----------+--------+
 
-        elder_workdate_sum_df: 근무 달수를 연도별로 더함
-            +--------+--------+--------+--------+--------+
-            | 2018년 | 2019년 | 2020년 | 2021년 | 2022년    |
-            +--------+--------+--------+--------+--------+
-            | 12     | 12     | 12     | 12     | 12     |
-            +--------+--------+--------+--------+--------+
-            | 12     | 12     | 12     | 12     | 12     |
-            +--------+--------+--------+--------+--------+
+            elder_workdate_sum_df: 근무 달수를 연도별로 더함
+                +--------+--------+--------+--------+--------+
+                | 2018년 | 2019년 | 2020년 | 2021년 | 2022년    |
+                +--------+--------+--------+--------+--------+
+                | 12     | 12     | 12     | 12     | 12     |
+                +--------+--------+--------+--------+--------+
+                | 12     | 12     | 12     | 12     | 12     |
+                +--------+--------+--------+--------+--------+
     """
 
     years = get_years(start_date, end_date)
@@ -335,12 +378,30 @@ def generate_disable_calendar(start_date, end_date, disable_mask, workdate_df):
         장애인 근무를 표기해 반환합니다.
 
     Args:
-        :param Series disable_mask: dtype bool
-            장애인 리스트, 장애인 자격이 있으면 True, 없으면 False 로 되어 있습니다.
-        :param DataFrame workdate_df:
+        :param str start_date: yyyy-mm-dd, example) '2017-01-01'
+        :param str end_date: yyyy-mm-dd, example) '2022-12-31'
+        :param Series disable_mask: 장애인 리스트, 장애인 자격이 있으면 True, 없으면 False 로 되어 있습니다.
+            example) [True, True, False, False ... True]
+        :param DataFrame workdate_df: 상시 근로자 각 달별 근무 여부
         :return:
             :DataFrame disable_workdate_df:
+                +--------+----------+----------+----------+----------+--------+
+                |        |2018.1.31|2018.2.28 |2018.3.31 | 2018.4.30|2018.5.31|
+                +--------+----------+----------+----------+----------+--------+
+                | 강대영 | TRUE     | FALSE    | FALSE    | FALSE    | FALSE  |
+                +--------+----------+----------+----------+----------+--------+
+                | 강혜진 | TRUE     | TRUE     | TRUE     | TRUE     | TRUE   |
+                +--------+----------+----------+----------+----------+--------+
+
             :DataFrame disable_workdate_sum_df:
+                +--------+--------+--------+--------+--------+
+                | 2018년 | 2019년 | 2020년 | 2021년 | 2022년    |
+                +--------+--------+--------+--------+--------+
+                | 12     | 12     | 12     | 12     | 12     |
+                +--------+--------+--------+--------+--------+
+                | 12     | 12     | 12     | 12     | 12     |
+                +--------+--------+--------+--------+--------+
+
         """
 
     years = get_years(start_date, end_date)
@@ -360,10 +421,29 @@ def generate_executive_calendar(start_date, end_date, executive_mask, workdate_d
        임원 근무를 표기해 반환합니다.
 
     Args:
+        :param str start_date: yyyy-mm-dd, example) '2017-01-01'
+        :param str end_date: yyyy-mm-dd, example) '2022-12-31'
         :param Series executive_mask: dtype bool
             임원 리스트, 임원 자격이 있으면 True, 없으면 False 로 되어 있습니다.
         :param DataFrame workdate_df:
         :return:
+            executive_workdate_df: 근무 달수 별로 일한 달에 True, 일하지 않은 달에 False
+                +--------+----------+----------+----------+----------+--------+
+                |        |2018.1.31|2018.2.28 |2018.3.31 | 2018.4.30|2018.5.31|
+                +--------+----------+----------+----------+----------+--------+
+                | 강대영 | TRUE     | FALSE    | FALSE    | FALSE    | FALSE  |
+                +--------+----------+----------+----------+----------+--------+
+                | 강혜진 | TRUE     | TRUE     | TRUE     | TRUE     | TRUE   |
+                +--------+----------+----------+----------+----------+--------+
+
+            executive_workdate_sum_df: 근무 달수를 연도별로 더함
+                +--------+--------+--------+--------+--------+
+                | 2018년 | 2019년 | 2020년 | 2021년 | 2022년    |
+                +--------+--------+--------+--------+--------+
+                | 12     | 12     | 12     | 12     | 12     |
+                +--------+--------+--------+--------+--------+
+                | 12     | 12     | 12     | 12     | 12     |
+                +--------+--------+--------+--------+--------+
         """
     years = get_years(start_date, end_date)
 
@@ -376,20 +456,15 @@ def generate_executive_calendar(start_date, end_date, executive_mask, workdate_d
     return executive_workdate_df, executive_workdate_sum_df
 
 
-def integrate_calendars(workdate, young_workdate, elder_workdate, disable_workdate, executive_workdate):
-    """
-
-    :return:
-    """
-    # 통합 근무 기간
-    pass
-
-
 def get_diff(workers):
     """
-    년도별 근로자 차이를 계산해 반환합니다.
-    :param workers:
-    :return:
+    Description:
+        년도별 근로자 차이를 계산해 반환
+
+    Args:
+        :param ndarray workers:
+            example) [52, 64, .. , 58]
+        :ndarray return:
     """
     rolled_workers = np.roll(workers, 1)
     diff = workers - rolled_workers
@@ -403,6 +478,7 @@ def get_years(start_date, end_date):
         시작년도 이상 마지막 년도 이하 모든 년도를 찾아 반환합니다.
         년도는 오름 차순으로 정렬되어 있습니다.
         시작년도와 마지막년도를 모두 포함합니다.
+
     :param str start_date: yyyy-mm-dd
     :param str end_date: yyyy-mm-dd
     :list return: [int, int, int]
@@ -418,13 +494,14 @@ def first_deduction(young_counts, etc_counts):
     """
     Description:
         최초 공제 정보를 계산해 반환합니다.
+    Args:
+        :param ndarray young_counts: 연도별 청년 근로자, 값 순서는 연도순으로 나열되어 있어야 합니다.
+        :param ndarray etc_counts: 연도별 기타 근로자
+        :return:
+            [[index, 청년 공제 증가, 기타 공제 증가],
+             [index, 청년 공제 증가, 기타 공제 증가]]
+             ⚠️(청년 공제 증가, 기타 공제 증가 최소값 = 0)
 
-    :param ndarray young_counts: 연도별 청년 근로자, 값 순서는 연도순으로 나열되어 있어야 합니다.
-    :param ndarray etc_counts: 연도별 기타 근로자
-    :return:
-        [[index, 청년 공제 증가, 기타 공제 증가],
-         [index, 청년 공제 증가, 기타 공제 증가]]
-    공제 증가 최소값은 0
     """
     yng_diff = get_diff(young_counts)
     etc_diff = get_diff(etc_counts)
@@ -505,28 +582,30 @@ def deduction_mask(young_counts, etc_counts, index):
 
 def deduction_table(capital_area):
     """
-    공제 금액 테이블을 반환합니다.
-    (⚠️ 중소 기업 이하만 적용 가능하다. 매년 년도별 공제 금액을 업데이트 해야 한다.)
-    또한 수도권 / 비수도권이 나눠어져 있다.
-    공제율(중소 기업 이하):
-        2018~2020, 2023년
-            +----------+------------+--------+
-            |          | 수도권 밖  | 수도권 |
-            +----------+------------+--------+
-            | 청년     | 1200       | 1100   |
-            +----------+------------+--------+
-            | 청년 외  | 770        | 700    |
-            +----------+------------+--------+
-        2021,2022
-            +----------+------------+--------+
-            |          | 수도권 밖  | 수도권 |
-            +----------+------------+--------+
-            | 청년     | 1300       | 1100   |
-            +----------+------------+--------+
-            | 청년 외  | 770        | 700    |
-            +----------+------------+--------+
-    :param capital_area:
-    :return:
+    Description:
+        공제 금액 테이블을 반환합니다.
+        (⚠️ 중소 기업 이하만 적용 가능하다. 매년 년도별 공제 금액을 업데이트 해야 한다.)
+        또한 수도권 / 비수도권이 나눠어져 있다.
+        공제율(중소 기업 이하):
+            2018~2020, 2023년
+                +----------+------------+--------+
+                |          | 수도권 밖  | 수도권 |
+                +----------+------------+--------+
+                | 청년     | 1200       | 1100   |
+                +----------+------------+--------+
+                | 청년 외  | 770        | 700    |
+                +----------+------------+--------+
+            2021,2022
+                +----------+------------+--------+
+                |          | 수도권 밖  | 수도권 |
+                +----------+------------+--------+
+                | 청년     | 1300       | 1100   |
+                +----------+------------+--------+
+                | 청년 외  | 770        | 700    |
+                +----------+------------+--------+
+    Args:
+        :param capital_area:
+        :return:
     """
     capital_df = pd.DataFrame()
     capital_df.index = ['young', 'etc']
@@ -556,8 +635,9 @@ def deduction_table(capital_area):
 
 def deduction_tax(year, type, capital_area):
     """
-    해당년도의 청년 또는 기타 공제 금액을 산정해 반환한다.
-    (⚠️ 중소 기업 이하만 적용 가능하다. 매년 년도별 공제 금액을 업데이트 해야 한다.)
+    Description:
+        해당년도의 청년 또는 기타 공제 금액을 산정해 반환한다.
+        (⚠️ 중소 기업 이하만 적용 가능하다. 매년 년도별 공제 금액을 업데이트 해야 한다.)
 
     Args:
         :param int year: 적용 연도
@@ -575,13 +655,15 @@ def deduction_tax(year, type, capital_area):
 
 def calculate_deduction(year, capital_area, yng_diff, etc_diff):
     """
-    공제 받을 세금을 계산해 반환
-    공제 금액은 최대 상시 근로자 수에 비례한다.
+    Description:
+        공제 받을 세금을 계산해 반환
+        공제 금액은 최대 상시 근로자 수에 비례한다.
 
-    :param int year: 적용 연도
-    param bool capital_area: 수도권 여부, 수도권이면 True
-    :param ndarray young_counts: 연도별 청년 근로자, 값 순서는 연도순으로 나열되어 있어야 합니다.
-    :param ndarray etc_counts: 연도별 기타 근로자
+    Args:
+        :param int year: 적용 연도
+        :param bool capital_area: 수도권 여부, 수도권이면 True
+        :param ndarray yng_diff: 연도별 청년 근로자, 값 순서는 연도순으로 나열되어 있어야 합니다.
+        :param ndarray etc_diff: 연도별 기타 근로자
 
     :return:
     """
@@ -726,50 +808,6 @@ def calculate_tax_sum(deductions, year):
     return refund_tax
 
 
-def generate_work_calendar(start_date, end_date, acquisi_date, disqual_date):
-    """
-    Description:
-        각 인원별, 각 년도별 상시 근로자와 청년 근로자 총 근무 달수를 계산해 반환합니다.
-        ⚠️ Warning : 210살 이상 생존한 사람이 있다면 해당 기능에 문제가 생길수 있습니다.
-
-    Args:
-        :param str start_date: yyyy-mm-dd, example) '2017-01-01'
-        :param str end_date: yyyy-mm-dd, example) '2022-12-31'
-
-    :DataFrame return:
-        workdate_df: 근무 달수 별로 일한 달에 True, 일하지 않은 달에 False
-            +----------+----------+----------+----------+--------+
-            | 2018.1.1 | 2018.1.2 | 2018.1.3 | 2018.1.4 | 2018.1.5|
-            +----------+----------+----------+----------+--------+
-            | TRUE     | FALSE    | FALSE    | FALSE    | FALSE  |
-            +--------+----------+----------+----------+----------+
-            | TRUE     | TRUE     | TRUE     | TRUE     | TRUE   |
-            +----------+----------+----------+----------+--------+
-
-        workdate_sum_df: 근무 달수를 연도별로 더함
-            +--------+--------+--------+--------+--------+
-            | 2018년 | 2019년 | 2020년 | 2021년 | 2022년    |
-            +--------+--------+--------+--------+--------+
-            | 12     | 12     | 12     | 12     | 12     |
-            +--------+--------+--------+--------+--------+
-            | 12     | 12     | 12     | 12     | 12     |
-            +--------+--------+--------+--------+--------+
-
-    """
-    # index 는 각 개인 고유 번호(pk)이어야 한다.
-
-    #
-    start_year = pd.to_datetime(start_date).year
-    end_year = pd.to_datetime(end_date).year
-    years = list(range(start_year, end_year + 1))
-
-    # 상시 근무 날짜를 측정합니다.
-    workdate_df = check_workdate(start_date, end_date, acquisi_date, disqual_date)
-    workdate_sum_df = sum_by_yaer(workdate_df, years, prefix='(상시)')
-
-    return workdate_df, workdate_sum_df
-
-
 def exclusive_workdate(workdate_df, *masks):
     """
     Description:
@@ -794,7 +832,7 @@ def get_deductions(n_youngs, n_etc, capital_area, years):
     # 최초 공제 리스트 추출
     first_deduction_infos = first_deduction(n_youngs, n_etc)
 
-    # 각 공제 별 정보 추출
+    # 각 최초 공제 별 정보 추출
     deductions = []
     for info in first_deduction_infos:
         index = info[0]
@@ -802,12 +840,13 @@ def get_deductions(n_youngs, n_etc, capital_area, years):
         etc_diff = info[2]
         mask = deduction_mask(n_youngs, n_etc, index)
         deduction_df = pd.DataFrame(mask.T, columns=years, index=['young', 'etc'])
-        #
+
+        # 최초 공제에 대한 기타 공제 금액, 청년 공제 금액을 계산합니다.
         young_tax, etc_tax = calculate_deduction(year=years[index],
                                                  capital_area=capital_area,
                                                  yng_diff=yng_diff,
                                                  etc_diff=etc_diff)
-        #
+        # 기타공제 금액, 청년공제 금액을
         deduction_df.iloc[:, :] = np.array([[young_tax], [etc_tax]]) * deduction_df.values
         deductions.append(deduction_df)
     return deductions
@@ -818,11 +857,11 @@ def generate_workdate(df, start_date, end_date, curr_date):
     Description:
         :param df:
             path = './data/사업장가입자명부_20221222 (상실자포함).xls'
-        :param start_date:
+        :param str start_date:
             start_date = '2018-01-01'
-        :param end_date:
+        :param str end_date:
             end_date = '2022-12-31'
-        :param curr_date:
+        :param Timestamp curr_date:
             curr_date = pd.Timestamp.today()
         :return:
     """
