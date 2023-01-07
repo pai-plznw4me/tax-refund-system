@@ -880,9 +880,11 @@ if __name__ == '__main__':
         generate_workdate(employee_df, start_date, end_date, curr_date)
 
     #  상시근로, 청년근로 총 인원수를 계산합니다.
-    total = pd.concat([name, workdate_sum_df, young_workdate_sum_df], axis=1).sum(axis=0)
+    table_df = pd.concat([name, workdate_sum_df, young_workdate_sum_df], axis=1)
+    total = table_df.sum(axis=0)
     total.iloc[0] = '합계'
     total.name = '합계'
+    table_df = table_df.append(total)
 
     # 청년 근로 및 기타 근로자 수를 계산합니다.
     n_workers = total[1:1 + 5].values
