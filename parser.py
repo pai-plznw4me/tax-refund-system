@@ -879,7 +879,7 @@ if __name__ == '__main__':
     workdate_df, workdate_sum_df, young_workdate_df, young_workdate_sum_df = \
         generate_workdate(employee_df, start_date, end_date, curr_date)
 
-    #
+    #  상시근로, 청년근로 총 인원수를 계산합니다.
     total = pd.concat([name, workdate_sum_df, young_workdate_sum_df], axis=1).sum(axis=0)
     total.iloc[0] = '합계'
     total.name = '합계'
