@@ -490,7 +490,7 @@ def get_years(start_date, end_date):
     return years
 
 
-def first_deduction(young_counts, etc_counts):
+def first_deduction(young_counts, etc_counts, years):
     """
     Description:
         최초 공제 정보를 계산해 반환합니다.
@@ -498,8 +498,8 @@ def first_deduction(young_counts, etc_counts):
         :param ndarray young_counts: 연도별 청년 근로자, 값 순서는 연도순으로 나열되어 있어야 합니다.
         :param ndarray etc_counts: 연도별 기타 근로자
         :return:
-            [[index, 청년 공제 증가, 기타 공제 증가],
-             [index, 청년 공제 증가, 기타 공제 증가]]
+            [[index, 청년 공제 증가, 기타 공제 증가, 공제 년도],
+             [index, 청년 공제 증가, 기타 공제 증가, 공제 년도]]
              ⚠️(청년 공제 증가, 기타 공제 증가 최소값 = 0)
 
     """
@@ -509,13 +509,18 @@ def first_deduction(young_counts, etc_counts):
 
     # 최초 공제 시기
     first_deduction_index = np.where(wkr_diff > 0)[0]
+    first_deduction_year = list(map(lambda x: years[x], first_deduction_index))
 
     # 최초 공제 시기에 청년/기타 작년도 대비 근무 개월 수 차이
     target_young_deductions = yng_diff[first_deduction_index]  # 청년
     target_etc_deductions = etc_diff[first_deduction_index]  # 기타
 
     # axis=0 최초 공제 연도, axis=1 (index, 작년도 대비 청년 근무 개월 수 차이, 작년도 대비 기타 근무 개월 수 차이)
-    first_deduction_infos = np.stack([first_deduction_index, target_young_deductions, target_etc_deductions], axis=-1)
+    first_deduction_infos = np.stack(
+        [first_deduction_index, target_young_deductions, target_etc_deductions, first_deduction_year], axis=-1)
+    first_deduction_infos = pd.DataFrame(first_deduction_infos)
+    first_deduction_infos.columns = ['index', 'young', 'etc', 'year']
+
     return first_deduction_infos
 
 
@@ -772,7 +777,7 @@ def calculate_deduction_sum(deductions, year):
 def calculate_tax_sum(deductions, year):
     """
     Description:
-        환급해야 할 세금 금액을 계산해 반환합니다.
+        환급해야 할 세금 금액을 계산합니다.
         :param list deductions:
             [deduction, deduction ... deduction]
             deduction:
@@ -791,6 +796,7 @@ def calculate_tax_sum(deductions, year):
     refund_index = []
     refund_taxs = []
     for ind, deduction_df in enumerate(deductions):
+
         # 추가 징수
         if deduction_df.loc['young', year] == -1:  # 'young' 이 -1 이면 'etc' 도 반드시 -1 입니다.
             deduction_df = deduction_df.replace({-1: 0})
@@ -826,15 +832,33 @@ def exclusive_workdate(workdate_df, *masks):
 
 def get_deductions(n_youngs, n_etc, capital_area, years):
     """
+    Description:
+        공제 테이블을 추출해 반환합니다.
+    Args:
+        :param n_youngs: 각 년도 별 청년 근로자 수
+        :param n_etc: 각 년도 별 기타 근로자 수
+        :param capital_area: 수도권 여부
+        :param years: 각 년도
+        :list return:
+            [공제 테이블, 공제 테이블 ... ,공제 테이블]
 
-    :return:
+            공제 테이블 예시)
+                +--+------+------+------+------+------+
+                |  | 2019 | 2020 | 2021 | 2022 | 2023 |
+                +--+------+------+------+------+------+
+                |  | NaN  |  NaN | 1100 | 1100 | -1   |
+                +--+------+------+------+------+------+
+                |  | NaN  |  NaN | 700 | 0     | -1   |
+                +--+------+------+------+------+------+
     """
     # 최초 공제 리스트 추출
-    first_deduction_infos = first_deduction(n_youngs, n_etc)
+    first_deduction_info_df = first_deduction(n_youngs, n_etc, years)
+    first_deduction_infos = first_deduction_info_df.values
 
-    # 각 최초 공제 별 정보 추출
-    deductions = []
+    # 최초 공제 리스트를 활용합니다.
+    deduction_tables = []
     for info in first_deduction_infos:
+        # 각 최초 공제 별 정보 추출
         index = info[0]
         yng_diff = info[1]
         etc_diff = info[2]
@@ -846,10 +870,12 @@ def get_deductions(n_youngs, n_etc, capital_area, years):
                                                  capital_area=capital_area,
                                                  yng_diff=yng_diff,
                                                  etc_diff=etc_diff)
-        # 기타공제 금액, 청년공제 금액을
+
+        # 기타공제 금액, 청년 공제금액을 곱합니다.
         deduction_df.iloc[:, :] = np.array([[young_tax], [etc_tax]]) * deduction_df.values
-        deductions.append(deduction_df)
-    return deductions
+        deduction_tables.append(deduction_df)
+
+    return deduction_tables, first_deduction_info_df
 
 
 def generate_workdate(df, start_date, end_date, curr_date):
@@ -887,11 +913,9 @@ def generate_workdate(df, start_date, end_date, curr_date):
     # 노인 근로자 근무 표
     elder_workdate_df, elder_workdate_sum_df = generate_elder_calendar(start_date, end_date, acquisi_date, disqual_date,
                                                                        resident_number)
-
     # 장애인 근로자 근무 표
     disable_workdate_df, disable_workdate_sum_df = generate_disable_calendar(start_date, end_date, disable_mask,
                                                                              workdate_df)
-
     # 임원 근로와 계약직 근로를 청년 근로에서 제거 합니다.
     young_workdate_df = exclusive_workdate(young_workdate_df, executive_mask, contract_mask)
 
@@ -914,9 +938,11 @@ if __name__ == '__main__':
     curr_date = pd.Timestamp.today()
     years = list(range(pd.to_datetime(start_date).year, pd.to_datetime(end_date).year + 1))
 
-    # 상시근로표, 청년근로표 를 생성해 반환합니다,
+    # 상시근로표, 청년근로표, 기타근로표를 생성해 반환합니다,
     workdate_df, workdate_sum_df, young_workdate_df, young_workdate_sum_df = \
         generate_workdate(employee_df, start_date, end_date, curr_date)
+    etc_workdate_sum_df = pd.DataFrame(workdate_sum_df.values - young_workdate_sum_df.values, index=workdate_df.index,
+                                       columns=['(기타)' + str(year) for year in years])
 
     #  상시근로, 청년근로 총 인원수를 계산합니다.
     table_df = pd.concat([name, workdate_sum_df, young_workdate_sum_df], axis=1)
@@ -930,12 +956,24 @@ if __name__ == '__main__':
     n_youngs = total[1 + 5:1 + 5 + 5].values
     n_etc = n_workers - n_youngs
 
-    # 공제, 추가 납부를 계산합니다.
-    deductions = get_deductions(n_youngs, n_etc, True, years)
+    # 최초 공제 별 1. 공제 적용 여부 테이블, 2. 최초 공제 정보 추출
+    deduction_tables, first_deduction_info_df = get_deductions(n_youngs, n_etc, True, years)
+
+    # 최초 공제 시기별 청년 근로자, 기타 근로자 연도별 근무 달(month) 수 추출
+    deduction_yng_workdate_sums = []
+    deduction_etc_workdate_sums = []
+    target_year = years[-1]
+    target_info_df = first_deduction_info_df.loc[first_deduction_info_df['year'] >= target_year - 2]
+    for _, row in target_info_df.iterrows():
+        year = row['year']
+        index = row['index']
+        deduction_yng_workdate_sums.append(young_workdate_sum_df.iloc[:, index:])
+        deduction_etc_workdate_sums.append(etc_workdate_sum_df.iloc[:, index:])
+    pass
 
     # 총합 공제 금액 계산
-    deduction_tax = calculate_deduction_sum(deductions, 2022)
+    deduction_tax = calculate_deduction_sum(deduction_tables, target_year)
 
-    # 공제 금액 반납
-    refund_tax = calculate_tax_sum(deductions, 2022)
+    # 추가 납무 금액 계산
+    refund_tax = calculate_tax_sum(deduction_tables, target_year)
     print('2022년 공제 받은 금액 : {} \n2022년 추가 납부 금액 : {}'.format(deduction_tax, refund_tax))

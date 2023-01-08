@@ -53,7 +53,7 @@ def index(request):
         n_etc = n_workers - n_youngs
 
         # 공제, 추가 납부를 계산합니다.
-        deductions = get_deductions(n_youngs, n_etc, True, years)
+        deductions, first_deduction_info = get_deductions(n_youngs, n_etc, True, years)
 
         # 총합 공제 금액 계산
         deduction = calculate_deduction_sum(deductions, year)
