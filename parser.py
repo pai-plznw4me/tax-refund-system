@@ -926,24 +926,60 @@ def generate_workdate(df, start_date, end_date, curr_date):
     return workdate_df, workdate_sum_df, merged_young_workdate_df, merged_young_workdate_sum_df
 
 
-def extend_young_workdate_sum(young_workdate, etc_workdate):
+def extend_workdate_sum(young_workdate_sum, etc_workdate_sum):
     """
     Description:
-        청년 유예 적용 young_workdate, etc_workdate 생성
-    :param young_workdate:
-    :param etc_workdate:
-    :return:
-    """
+        청년 유예 근로, 기타 유예 근로 달수 계산
 
-
-def validate_young_workdate(young_workdate, etc_workdate):
-    """
-    Description:
-        청년 유예 적용 young_workdate, etc_workdate  을 활용해 추가 연장 가능 한지를 판단합니다.
-    :param young_workdate:
-    :param etc_workdate:
+    :param young_workdate_sum:
+    :param etc_workdate_sum:
     :return:
+        DataFrame extend_young_workdate_sum:
+        DataFrame extend_etc_workdate_sum:
     """
+    assert young_workdate_sum.shape == etc_workdate_sum.shape
+    # workdate column 개 수가 하나시에 적용 년도가 하나 뿐이라 유예 알고리즘을 적용하지 않고 그대로 출력합니다.
+    if young_workdate_sum.shape[1] == 1:
+        extend_young_workdate_sum = young_workdate_sum
+        extend_etc_workdate_sum = etc_workdate_sum
+
+    # workdate column 개 수가 하나 이상 3개 이하이면 적용
+    elif (young_workdate_sum.shape[1] > 1) and (young_workdate_sum.shape[1] <= 3):
+
+        n_index = young_workdate_sum.shape[1]  # 적용 연도 수
+        extend_young_workdate_sum = young_workdate_sum.copy()  # 연도별 청년 유예 근로 달 수(base)
+        extend_etc_workdate_sum = etc_workdate_sum.copy()  # 연도별 기타 유예 근로 달 수(base)
+
+        # 최대 청년 근로 달수를 계산합니다.
+        batch_size = 2
+        for i in range(n_index - batch_size + 1):
+            # prev, post 연도별 청년 근로 달 수
+            prev_young_workdate_sum = young_workdate_sum.iloc[:, i]
+            post_young_workdate_sum = young_workdate_sum.iloc[:, i + 1]
+            # prev, post 연도별 기타 근로 달 수
+            prev_etc_workdate_sum = etc_workdate_sum.iloc[:, i]
+            post_etc_workdate_sum = etc_workdate_sum.iloc[:, i + 1]
+
+            # post 연도별 상시 근로 달 수
+            post_total_workdate_sum = post_young_workdate_sum + post_etc_workdate_sum
+
+            # 최대 청년 근로 달(month)수 (작년도와 해당년도 사이)
+            anchor_young_workdate_sum_np = np.stack([post_young_workdate_sum.values, prev_young_workdate_sum.values],
+                                                    axis=-1).max(axis=-1)
+            # 최대 청년 근로 달수를 상시근로자 수로 제한
+            anchor_young_workdate_sum_np = np.clip(anchor_young_workdate_sum_np, 0, post_total_workdate_sum.values)
+
+            # 기타 근로자 수 계산
+            anchor_etc_workdate_sum_np = post_total_workdate_sum.values - anchor_young_workdate_sum_np
+
+            # 해당 년도에 청년 유예 근로 달수 ,기타 유예 근로 달수를 저장
+            extend_young_workdate_sum.iloc[:, i] = anchor_young_workdate_sum_np
+            extend_etc_workdate_sum.iloc[:, i] = anchor_etc_workdate_sum_np
+
+    else:
+        raise ValueError
+
+    return extend_young_workdate_sum, extend_etc_workdate_sum
 
 
 if __name__ == '__main__':
@@ -979,19 +1015,35 @@ if __name__ == '__main__':
     # 최초 공제 별 1. 공제 적용 여부 테이블, 2. 최초 공제 정보 추출
     deduction_tables, first_deduction_info_df = get_deductions(n_youngs, n_etc, True, years)
 
-    # 최초 공제 시기별 청년 근로자, 기타 근로자 연도별 근무 달(month) 수 추출
+    # 최초 공제별 청년 근로자, 기타 근로자 연도별 근무 달(month)
     deduction_yng_workdate_sums = []
     deduction_etc_workdate_sums = []
+    extend_yng_workdate_sums = []
+    extend_etc_workdate_sums = []
+
     target_year = years[-1]
     target_info_df = first_deduction_info_df.loc[first_deduction_info_df['year'] >= target_year - 2]
     for _, row in target_info_df.iterrows():
         year = row['year']
         index = row['index']
-        deduction_yng_workdate_sums.append(young_workdate_sum_df.iloc[:, index:])
-        deduction_etc_workdate_sums.append(etc_workdate_sum_df.iloc[:, index:])
+
+        # 최초 공제별 청년 유예 근로자 연도별 근무 달 수
+        deduction_yng_workdate_sum = young_workdate_sum_df.iloc[:, index:]
+        deduction_yng_workdate_sums.append(deduction_yng_workdate_sum)
+
+        # 최초 공제별 기타 유예 근로자 연도별 근무 달 수
+        deduction_etc_workdate_sum = etc_workdate_sum_df.iloc[:, index:]
+        deduction_etc_workdate_sums.append(deduction_etc_workdate_sum)
+
+        # 청년, 기타 유예 연도별 근 무 달수
+        extend_young_workdate_sum_df, extend_etc_workdate_sum_df = extend_workdate_sum(deduction_yng_workdate_sum,
+                                                                                       deduction_etc_workdate_sum)
+        extend_yng_workdate_sums.append(extend_young_workdate_sum_df)
+        extend_etc_workdate_sums.append(extend_etc_workdate_sum_df)
 
     # 총합 공제 금액 계산
     deduction_tax = calculate_deduction_sum(deduction_tables, target_year)
+
 
     # 추가 납무 금액 계산
     refund_tax = calculate_tax_sum(deduction_tables, target_year)
