@@ -926,6 +926,26 @@ def generate_workdate(df, start_date, end_date, curr_date):
     return workdate_df, workdate_sum_df, merged_young_workdate_df, merged_young_workdate_sum_df
 
 
+def extend_young_workdate_sum(young_workdate, etc_workdate):
+    """
+    Description:
+        청년 유예 적용 young_workdate, etc_workdate 생성
+    :param young_workdate:
+    :param etc_workdate:
+    :return:
+    """
+
+
+def validate_young_workdate(young_workdate, etc_workdate):
+    """
+    Description:
+        청년 유예 적용 young_workdate, etc_workdate  을 활용해 추가 연장 가능 한지를 판단합니다.
+    :param young_workdate:
+    :param etc_workdate:
+    :return:
+    """
+
+
 if __name__ == '__main__':
     # 사업자가입자명부를 로드합니다.
     path = './data/사업장가입자명부.xls'  # ./data/사업장가입자명부_20221222 (상실자포함).xls
@@ -969,7 +989,6 @@ if __name__ == '__main__':
         index = row['index']
         deduction_yng_workdate_sums.append(young_workdate_sum_df.iloc[:, index:])
         deduction_etc_workdate_sums.append(etc_workdate_sum_df.iloc[:, index:])
-    pass
 
     # 총합 공제 금액 계산
     deduction_tax = calculate_deduction_sum(deduction_tables, target_year)
