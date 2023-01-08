@@ -519,7 +519,7 @@ def first_deduction(young_counts, etc_counts, years):
     first_deduction_infos = np.stack(
         [first_deduction_index, target_young_deductions, target_etc_deductions, first_deduction_year], axis=-1)
     first_deduction_infos = pd.DataFrame(first_deduction_infos)
-    first_deduction_infos.columns = ['index', 'young', 'etc', 'year']
+    first_deduction_infos.columns = ['year_index', 'young', 'etc', 'year']
 
     return first_deduction_infos
 
@@ -764,12 +764,15 @@ def calculate_deduction_sum(deductions, year):
 
     :return:
     """
+
     tax = []
+    # 상시 근로자 줄어든 케이스
     for deduction_df in deductions:
         mask = deduction_df < 0
         deduction_df[mask] = 0
         deduction_df = deduction_df.fillna(0)
         tax.append(deduction_df.loc[:, year].sum())
+
     total_tax = np.sum(tax)
     return total_tax
 
@@ -803,7 +806,7 @@ def calculate_tax_sum(deductions, year):
             deduction_df = deduction_df.fillna(0)
             refund_index.append(ind)
             # 환급 해야 할 돈을 계산합니다. 받았던 모든 공제를 반납해야 합니다.
-            tax = deduction_df.sum()
+            tax = deduction_df.values.sum(axis=None)
             refund_taxs.append(tax)
         else:
             refund_taxs.append(0)
@@ -1021,18 +1024,26 @@ if __name__ == '__main__':
     extend_yng_workdate_sums = []
     extend_etc_workdate_sums = []
 
+    # 총합 공제 금액 계산
     target_year = years[-1]
-    target_info_df = first_deduction_info_df.loc[first_deduction_info_df['year'] >= target_year - 2]
-    for _, row in target_info_df.iterrows():
+    deduction_tax = calculate_deduction_sum(deduction_tables, target_year)
+
+    # 최초 공제 중 해당년도(2022)와 2년전(2020) 사이 최초 공제를 찾아 반환합니다.
+    target_mask = first_deduction_info_df['year'] >= target_year - 2
+    target_deduction_index = target_mask[target_mask].index  # 타겟 공제 인덱스 추출
+    target_info_df = first_deduction_info_df.loc[target_mask]
+
+    # 해당 (2020, 2021, 2022) 최초 공제 별 청년 / 기타 유예
+    for (_, row), deduction_index in zip(target_info_df.iterrows(), target_deduction_index):
         year = row['year']
-        index = row['index']
+        year_index = row['year_index']
 
         # 최초 공제별 청년 유예 근로자 연도별 근무 달 수
-        deduction_yng_workdate_sum = young_workdate_sum_df.iloc[:, index:]
+        deduction_yng_workdate_sum = young_workdate_sum_df.iloc[:, year_index:]
         deduction_yng_workdate_sums.append(deduction_yng_workdate_sum)
 
         # 최초 공제별 기타 유예 근로자 연도별 근무 달 수
-        deduction_etc_workdate_sum = etc_workdate_sum_df.iloc[:, index:]
+        deduction_etc_workdate_sum = etc_workdate_sum_df.iloc[:, year_index:]
         deduction_etc_workdate_sums.append(deduction_etc_workdate_sum)
 
         # 청년, 기타 유예 연도별 근 무 달수
@@ -1041,9 +1052,11 @@ if __name__ == '__main__':
         extend_yng_workdate_sums.append(extend_young_workdate_sum_df)
         extend_etc_workdate_sums.append(extend_etc_workdate_sum_df)
 
-    # 총합 공제 금액 계산
-    deduction_tax = calculate_deduction_sum(deduction_tables, target_year)
-
+        # 최초 공제 받은 시기보다 청년 근로 달수가 감소 했는지를 check 합니다.
+        mask = extend_young_workdate_sum_df.sum() - extend_young_workdate_sum_df.sum()[0] >= 0
+        # 청년 근로 달(Month) 수 감소시 if 구문 수행
+        if not mask.all():
+            deduction_tables[deduction_index][target_year] = -1
 
     # 추가 납무 금액 계산
     refund_tax = calculate_tax_sum(deduction_tables, target_year)
