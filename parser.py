@@ -984,7 +984,6 @@ def extend_workdate_sum(young_workdate_sum, etc_workdate_sum):
 
     return extend_young_workdate_sum, extend_etc_workdate_sum
 
-
 if __name__ == '__main__':
     # 사업자가입자명부를 로드합니다.
     path = './data/사업장가입자명부.xls'  # ./data/사업장가입자명부_20221222 (상실자포함).xls

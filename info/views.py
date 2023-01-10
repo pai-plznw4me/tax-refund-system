@@ -7,7 +7,7 @@ from django.views.decorators.csrf import csrf_exempt
 import pandas as pd
 
 from parser import load_workdate, generate_workdate, get_deductions, calculate_deduction_sum, \
-    calculate_tax_sum
+    calculate_tax_sum, extend_workdate_sum
 
 
 @csrf_exempt
@@ -37,8 +37,12 @@ def index(request):
         years = list(range(pd.to_datetime(start_date).year, pd.to_datetime(end_date).year + 1))
 
         # 상시근로표, 청년근로표 를 생성해 반환합니다,
+        # 상시근로표, 청년근로표, 기타근로표를 생성해 반환합니다,
         workdate_df, workdate_sum_df, young_workdate_df, young_workdate_sum_df = \
             generate_workdate(employee_df, start_date, end_date, curr_date)
+        etc_workdate_sum_df = pd.DataFrame(workdate_sum_df.values - young_workdate_sum_df.values,
+                                           index=workdate_df.index,
+                                           columns=['(기타)' + str(year) for year in years])
 
         #  상시근로, 청년근로 총 인원수를 계산합니다.
         table_df = pd.concat([name, workdate_sum_df, young_workdate_sum_df], axis=1)
@@ -52,14 +56,51 @@ def index(request):
         n_youngs = total[1 + 5:1 + 5 + 5].values
         n_etc = n_workers - n_youngs
 
-        # 공제, 추가 납부를 계산합니다.
-        deductions, first_deduction_info = get_deductions(n_youngs, n_etc, True, years)
+        # 최초 공제 별 1. 공제 적용 여부 테이블, 2. 최초 공제 정보 추출
+        deduction_tables, first_deduction_info_df = get_deductions(n_youngs, n_etc, True, years)
+
+        # 최초 공제별 청년 근로자, 기타 근로자 연도별 근무 달(month)
+        deduction_yng_workdate_sums = []
+        deduction_etc_workdate_sums = []
+        extend_yng_workdate_sums = []
+        extend_etc_workdate_sums = []
 
         # 총합 공제 금액 계산
-        deduction = calculate_deduction_sum(deductions, year)
+        target_year = years[-1]
+        deduction = calculate_deduction_sum(deduction_tables, target_year)
 
-        # 공제 금액 반납
-        tax = calculate_tax_sum(deductions, year)
+        # 최초 공제 중 해당년도(2022)와 2년전(2020) 사이 최초 공제를 찾아 반환합니다.
+        target_mask = first_deduction_info_df['year'] >= target_year - 2
+        target_deduction_index = target_mask[target_mask].index  # 타겟 공제 인덱스 추출
+        target_info_df = first_deduction_info_df.loc[target_mask]
+
+        # 해당 (2020, 2021, 2022) 최초 공제 별 청년 / 기타 유예
+        for (_, row), deduction_index in zip(target_info_df.iterrows(), target_deduction_index):
+            year = row['year']
+            year_index = row['year_index']
+
+            # 최초 공제별 청년 유예 근로자 연도별 근무 달 수
+            deduction_yng_workdate_sum = young_workdate_sum_df.iloc[:, year_index:]
+            deduction_yng_workdate_sums.append(deduction_yng_workdate_sum)
+
+            # 최초 공제별 기타 유예 근로자 연도별 근무 달 수
+            deduction_etc_workdate_sum = etc_workdate_sum_df.iloc[:, year_index:]
+            deduction_etc_workdate_sums.append(deduction_etc_workdate_sum)
+
+            # 청년, 기타 유예 연도별 근 무 달수
+            extend_young_workdate_sum_df, extend_etc_workdate_sum_df = extend_workdate_sum(deduction_yng_workdate_sum,
+                                                                                           deduction_etc_workdate_sum)
+            extend_yng_workdate_sums.append(extend_young_workdate_sum_df)
+            extend_etc_workdate_sums.append(extend_etc_workdate_sum_df)
+
+            # 최초 공제 받은 시기보다 청년 근로 달수가 감소 했는지를 check 합니다.
+            mask = extend_young_workdate_sum_df.sum() - extend_young_workdate_sum_df.sum()[0] >= 0
+            # 청년 근로 달(Month) 수 감소시 if 구문 수행
+            if not mask.all():
+                deduction_tables[deduction_index][target_year] = -1
+
+        # 추가 납무 금액 계산
+        tax = calculate_tax_sum(deduction_tables, target_year)
         print('2022년 공제 받은 금액 : {} \n2022년 추가 납부 금액 : {}'.format(deduction, tax))
 
         table_df = table_df
