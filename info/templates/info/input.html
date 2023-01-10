@@ -1,5 +1,6 @@
+{% load static %}
 <form class="mb-8" method="post" action="{% url 'info:index' %}"
-      enctype="multipart/form-data">
+      enctype="multipart/form-data" id="deduction_info_form">
     <div class="card multisteps-form__panel p-3 border-radius-xl bg-white js-active" data-animation="FadeIn">
         <h5 class="font-weight-bolder mb-0">정보 입력</h5>
         <p class="mb-0 text-sm"></p>
@@ -8,7 +9,7 @@
                 <div class="col-12 col-sm-6">
                     <label>사업장 이름</label>
                     <input class="form-control" type="text" onfocus="focused(this)" onfocusout="defocused(this)"
-                           name="company" placeholder="새마을금고(금호점)">
+                           id="name" name="company" placeholder="새마을금고(금호점)">
                 </div>
                 <div class="col-12 col-sm-6">
                     <label>연도</label>
@@ -34,11 +35,16 @@
                     <div class="ms-2">
                     </div>
                 </div>
-                <button class="btn btn-outline-secondary bg-gradient-dark mb-0 ms-auto" type="button" name="button">
-                    생성
+                <button id='download' class="btn btn-outline-secondary bg-gradient-dark mb-0 ms-auto" type="submit"
+                        name="button" onclick="active_download()">
+                    다운로드
                 </button>
-                <input class="btn bg-gradient-danger mb-0 ms-2" type="submit" value="제출">
+                <input class="btn bg-gradient-danger mb-0 ms-2" type="submit" value="생성" onclick="active_generate()">
             </div>
         </div>
     </div>
 </form>
+
+{% block js %}
+<script src="{% static 'info/js/input.js' %}" ></script>
+{% endblock %}
