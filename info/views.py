@@ -28,7 +28,7 @@ def index(request):
         filename = fs.save(employee.name, employee)
         filepath = os.path.join(dirpath, filename)
 
-        deduction, tax, table_df = deductio_and_tax(filepath)
+        deduction, tax, table_df = deductio_and_tax(filepath, None)
 
         context = {'table_df': table_df,
                    'company_name': company_name,
