@@ -7,5 +7,6 @@ function active_download() {
 
 
 function active_generate() {
-    console.log($('#deduction_info_form').attr('action').replace('download', 'index'))
+       var newActionUrl = $('#deduction_info_form').attr('action').replace('download', 'index')
+    $('#deduction_info_form').attr('action', newActionUrl)
 }
