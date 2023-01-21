@@ -4,10 +4,7 @@ from django.http import HttpResponse, FileResponse
 from django.shortcuts import render
 from django.template import loader
 from django.views.decorators.csrf import csrf_exempt
-import pandas as pd
-
-from parser import load_workdate, generate_workdate, get_deductions, calculate_deduction_sum, \
-    calculate_tax_sum, extend_workdate_sum, filter_valid_deductions, df2excel, filter_valid_tax, deductio_and_tax
+from parser import deductio_and_tax
 
 
 @csrf_exempt
@@ -28,6 +25,7 @@ def index(request):
         filename = fs.save(employee.name, employee)
         filepath = os.path.join(dirpath, filename)
 
+        # 사업자 가입 명부 파싱 및 파싱 결과 저장
         deduction, tax, table_df = deductio_and_tax(filepath, None)
 
         context = {'table_df': table_df,
@@ -54,20 +52,21 @@ def graph(request):
 def download(request):
     # 파일 저장
     company_name = request.POST.get('company')
-    year = int(request.POST.get('year'))
     employee = request.FILES.getlist('employee')[0]
 
-    # 사업자 가 명부 파일 저장
+    # 사업자 가입 명부 파일 저장
     dirpath = './media'
     fs = FileSystemStorage(location=dirpath)
     filename = fs.save(employee.name, employee)
     filename_ext = os.path.splitext(filename)[-1]
     filepath = os.path.join(dirpath, filename)
 
-    #
+    # 사업자 가입 명부 파싱 및 파싱 결과 저장
     save_name = company_name + '{}'.format(filename_ext)
     save_path = os.path.join(dirpath, save_name)
-    deduction, tax, table_df = deductio_and_tax(filepath, save_path=save_path)
+    _ = deductio_and_tax(filepath, save_path=save_path)
+
+    # 다운로드 제공
     fs = FileSystemStorage(dirpath)
     response = FileResponse(fs.open(save_name, 'rb'), content_type='application/force-download')
     response['Content-Disposition'] = 'attachment; filename="{}"'.format(save_name).encode('utf-8')

@@ -1137,8 +1137,8 @@ def deductio_and_tax(path, save_path):
         # 청년, 기타 유예 연도별 근 무 달수
         extend_young_workdate_sum_df, extend_etc_workdate_sum_df = extend_workdate_sum(deduction_yng_workdate_sum,
                                                                                        deduction_etc_workdate_sum)
-        extend_yng_workdate_sums.append(extend_young_workdate_sum_df)
-        extend_etc_workdate_sums.append(extend_etc_workdate_sum_df)
+        extend_yng_workdate_sums.append(pd.concat([name, extend_young_workdate_sum_df], axis=1))
+        extend_etc_workdate_sums.append(pd.concat([name, extend_etc_workdate_sum_df], axis=1))
         extend_merged_workdate_sums = pd.concat([extend_young_workdate_sum_df, extend_etc_workdate_sum_df], axis=1)
         map_year_merged[str(year) + '유예근무달수'] = extend_merged_workdate_sums  # 엑셀 변환을 위해 추가
         # 최초 공제 받은 시기보다 청년 근로 달수가 감소 했는지를 check 합니다.
@@ -1153,18 +1153,20 @@ def deductio_and_tax(path, save_path):
     valid_tax_tables, valid_tax_indices = filter_valid_tax(deduction_tables, target_year)
     merged_valid_tax_table = pd.concat(valid_tax_tables, axis=0)
     valid_first_tax_info_df = first_deduction_info_df.iloc[valid_tax_indices]
-    # 엑셀로 변환하기 위해 지정 년도 받은 추가 납부를 찾아 반환합니다.
 
-    # excel 로 변환
-    # 엑셀 변환을 위해 타겟 공제 추출
+    # 이름 column 추가
+    workdate_sum_df, young_workdate_sum_df, etc_workdate_sum_df = list(
+        map(lambda x: pd.concat([name, x], axis=1), [workdate_sum_df, young_workdate_sum_df, etc_workdate_sum_df]))
+    # 공제별 유예근무달수 이름 추가
+    for key, value in  map_year_merged.items():
+        map_year_merged[key] = pd.concat([name, value], axis=1)
+
+    # 엑셀로 변환하기 위해 지정 년도에 받은 추가 납부를 찾아 반환합니다.
+    # excel 로 변환, 엑셀 변환을 위해 타겟 공제 추출
     tax_tables = []
     for ind, deduction_df in enumerate(deduction_tables):
         if deduction_df.loc['young', year] == -1:
             tax_tables.append(deduction_df)
-
-    #
-    merged_extend_yng_workdate_sums = pd.concat(extend_yng_workdate_sums, axis=1)
-    merged_extend_etc_workdate_sums = pd.concat(extend_etc_workdate_sums, axis=1)
     if save_path:
         df2excel(save_path,
                  공제및추가납부=pd.DataFrame({'공제금액': [deduction_tax], '추가납부금액': [refund_tax]}),
@@ -1173,14 +1175,10 @@ def deductio_and_tax(path, save_path):
                  기타근로표=etc_workdate_sum_df,
                  공제금액표=valid_deduction_table,
                  공제정보=valid_first_deduction_info_df,
-                 공제별청년유예=merged_extend_yng_workdate_sums,
-                 공제별기타유예=merged_extend_etc_workdate_sums,
                  추가납부금액표=merged_valid_tax_table,
                  추가납부정보=valid_first_tax_info_df,
                  **map_year_merged,
                  )
-
-
     print('2022년 공제 받은 금액 : {} \n2022년 추가 납부 금액 : {}'.format(deduction_tax, refund_tax))
     return deduction_tax, refund_tax, table_df
 
@@ -1188,114 +1186,9 @@ def deductio_and_tax(path, save_path):
 if __name__ == '__main__':
     # 사업자가입자명부를 로드합니다.
     map_name_dataframe = {}
-    path = './data/사업장가입자명부.xls'  # ./data/사업장가입자명부_20221222 (상실자포함).xls
-    employee_df = load_workdate(path)
+    filepath = './data/사업장가입자명부.xls'  # ./data/사업장가입자명부_20221222 (상실자포함).xls
+    employee_df = load_workdate(filepath)
 
-    # 필요 정보를 입력합니다.
-    name = employee_df.iloc[:, 1]  # 이름
-    start_date = '2018-01-01'
-    end_date = '2022-12-31'
-    curr_date = pd.Timestamp.today()
-    years = list(range(pd.to_datetime(start_date).year, pd.to_datetime(end_date).year + 1))
-
-    # 상시근로표, 청년근로표, 기타근로표를 생성해 반환합니다,
-    workdate_df, workdate_sum_df, young_workdate_df, young_workdate_sum_df = \
-        generate_workdate(employee_df, start_date, end_date, curr_date)
-    etc_workdate_sum_df = pd.DataFrame(workdate_sum_df.values - young_workdate_sum_df.values, index=workdate_df.index,
-                                       columns=['(기타)' + str(year) for year in years])
-
-    #  상시근로, 청년근로 총 인원수를 계산합니다.
-    table_df = pd.concat([name, workdate_sum_df, young_workdate_sum_df], axis=1)
-    total = table_df.sum(axis=0)
-    total.iloc[0] = '합계'
-    total.name = '합계'
-    table_df = table_df.append(total)
-
-    # 청년 근로 및 기타 근로자 수를 계산합니다.
-    n_workers = total[1:1 + 5].values
-    n_youngs = total[1 + 5:1 + 5 + 5].values
-    n_etc = n_workers - n_youngs
-
-    # 최초 공제 별 1. 공제 적용 여부 테이블, 2. 최초 공제 정보 추출
-    deduction_tables, first_deduction_info_df = get_deductions(n_youngs, n_etc, True, years)
-
-    # 최초 공제별 청년 근로자, 기타 근로자 연도별 근무 달(month)
-    deduction_yng_workdate_sums = []
-    deduction_etc_workdate_sums = []
-    extend_yng_workdate_sums = []
-    extend_etc_workdate_sums = []
-
-    # 총합 공제 금액 계산
-    target_year = years[-1]
-    deduction_tax = calculate_deduction_sum(deduction_tables, target_year)
-
-    # 엑셀로 변환하기 위해 지정 년도 받은 공제를 찾아 반환합니다.
-    valid_deduction_tables, valid_deduction_indices = filter_valid_deductions(deduction_tables, target_year)
-    valid_deduction_table = pd.concat(valid_deduction_tables, axis=0)
-    valid_first_deduction_info_df = first_deduction_info_df.iloc[valid_deduction_indices]
-
-    # 최초 공제 중 해당년도(2022)와 2년전(2020) 사이 최초 공제를 찾아 반환합니다.
-    target_mask = first_deduction_info_df['year'] >= target_year - 2
-    target_deduction_index = target_mask[target_mask].index  # 타겟 공제 인덱스 추출
-    target_info_df = first_deduction_info_df.loc[target_mask]
-
-    # 해당 (2020, 2021, 2022) 최초 공제 별 청년 / 기타 유예
-    map_year_merged = {}  # 엑셀 변환을 위해 연도와 매칭되는 청년/기타 유예 통합 테이블
-    for (_, row), deduction_index in zip(target_info_df.iterrows(), target_deduction_index):
-        year = row['year']
-        year_index = row['year_index']
-
-        # 최초 공제별 청년 유예 근로자 연도별 근무 달 수
-        deduction_yng_workdate_sum = young_workdate_sum_df.iloc[:, year_index:]
-        deduction_yng_workdate_sums.append(deduction_yng_workdate_sum)
-
-        # 최초 공제별 기타 유예 근로자 연도별 근무 달 수
-        deduction_etc_workdate_sum = etc_workdate_sum_df.iloc[:, year_index:]
-        deduction_etc_workdate_sums.append(deduction_etc_workdate_sum)
-
-        # 청년, 기타 유예 연도별 근 무 달수
-        extend_young_workdate_sum_df, extend_etc_workdate_sum_df = extend_workdate_sum(deduction_yng_workdate_sum,
-                                                                                       deduction_etc_workdate_sum)
-        extend_yng_workdate_sums.append(extend_young_workdate_sum_df)
-        extend_etc_workdate_sums.append(extend_etc_workdate_sum_df)
-        extend_merged_workdate_sums = pd.concat([extend_young_workdate_sum_df, extend_etc_workdate_sum_df], axis=1)
-        map_year_merged[str(year) + '유예근무달수'] = extend_merged_workdate_sums  # 엑셀 변환을 위해 추가
-        # 최초 공제 받은 시기보다 청년 근로 달수가 감소 했는지를 check 합니다.
-        mask = extend_young_workdate_sum_df.sum() - extend_young_workdate_sum_df.sum()[0] >= 0
-
-        # 청년 근로 달(Month) 수 감소시 if 구문 수행
-        if not mask.all():
-            deduction_tables[deduction_index][target_year] = -1
-
-    # 추가 납무 금액 계산
-    refund_tax = calculate_tax_sum(deduction_tables, target_year)
-    valid_tax_tables, valid_tax_indices = filter_valid_tax(deduction_tables, target_year)
-    merged_valid_tax_table = pd.concat(valid_tax_tables, axis=0)
-    valid_first_tax_info_df = first_deduction_info_df.iloc[valid_tax_indices]
-    # 엑셀로 변환하기 위해 지정 년도 받은 추가 납부를 찾아 반환합니다.
-
-    # excel 로 변환
-    # 엑셀 변환을 위해 타겟 공제 추출
-    tax_tables = []
-    for ind, deduction_df in enumerate(deduction_tables):
-        if deduction_df.loc['young', year] == -1:
-            tax_tables.append(deduction_df)
-
-    #
-    merged_extend_yng_workdate_sums = pd.concat(extend_yng_workdate_sums, axis=1)
-    merged_extend_etc_workdate_sums = pd.concat(extend_etc_workdate_sums, axis=1)
-
-    df2excel('tmp.xlsx',
-             상시근로표=workdate_sum_df,
-             청년근로표=young_workdate_sum_df,
-             기타근로표=etc_workdate_sum_df,
-             공제금액표=valid_deduction_table,
-             공제정보=valid_first_deduction_info_df,
-             공제별청년유예=merged_extend_yng_workdate_sums,
-             공제별기타유예=merged_extend_etc_workdate_sums,
-             추가납부금액표=merged_valid_tax_table,
-             추가납부정보=valid_first_tax_info_df,
-             **map_year_merged
-             )
-
-    print('2022년 공제 받은 금액 : {} \n2022년 추가 납부 금액 : {}'.format(deduction_tax, refund_tax))
+    # 사업가자입명부 파싱 및 저장
+    save_path = 'tmp.xlsx'
+    deduction, tax, table_df = deductio_and_tax(filepath, save_path=save_path)
